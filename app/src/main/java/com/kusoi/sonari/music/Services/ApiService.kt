@@ -3,6 +3,7 @@ package com.kusoi.sonari.music.Services
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -88,7 +89,11 @@ object ApiService {
         val title: String
     )
 
-    enum class ApiError : Exception() {
-        badURL, serverError, jobTimeout
+    class ApiError(message: String) : Exception(message) {
+        companion object {
+            val badURL = ApiError("badURL")
+            val serverError = ApiError("serverError")
+            val jobTimeout = ApiError("jobTimeout")
+        }
     }
 }
