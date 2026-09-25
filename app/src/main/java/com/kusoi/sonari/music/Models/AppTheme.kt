@@ -42,16 +42,16 @@ data class AppTheme(
             val accentSaturation = max(saturation, 0.45f)
             val accentColor = Color.hsv(
                 hue * 360f,
-                accentSaturation * 100f,
-                max(brightness, 0.55f) * 100f
+                accentSaturation,
+                max(brightness, 0.55f)
             )
 
             /** Background top: same hue, lower saturation, dark enough for white text. */
             val topSaturation = max(saturation * 0.55f, 0.12f)
-            val topColor = Color.hsv(hue * 360f, topSaturation * 100f, 22f)
+            val topColor = Color.hsv(hue * 360f, topSaturation, 0.22f)
 
             /** Background bottom: near-black with a hint of the hue. */
-            val bottomColor = Color.hsv(hue * 360f, topSaturation * 0.4f * 100f, 6f)
+            val bottomColor = Color.hsv(hue * 360f, topSaturation * 0.4f, 0.06f)
 
             return AppTheme(
                 backgroundTop = topColor,

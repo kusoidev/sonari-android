@@ -100,59 +100,42 @@ fun LibraryScreen() {
             }
 
             items(displayTracks, key = { it.id }) { track ->
-                Box {
+                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                     var menuOpen by remember { mutableStateOf(false) }
 
-                    Box(
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    ) {
-                        TrackRow(
-                            track = track,
-                            isCurrent = currentTrack?.id == track.id,
-                            isPlaying = isPlaying,
-                            onPlay = {
-                                val queue = displayTracks
-                                val index = queue.indexOfFirst { it.id == track.id }
-                                PlayerViewModel.setQueue(queue, index)
-                                PlayerViewModel.play(track)
-                            }
-                        )
-                    }
+                    TrackRow(
+                        track = track,
+                        isCurrent = currentTrack?.id == track.id,
+                        isPlaying = isPlaying,
+                        onPlay = {
+                            val queue = displayTracks
+                            val index = queue.indexOfFirst { it.id == track.id }
+                            PlayerViewModel.setQueue(queue, index)
+                            PlayerViewModel.play(track)
+                        },
+                        onLongPress = { menuOpen = true }
+                    )
 
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "More",
-                            tint = Color.White.copy(alpha = 0.4f),
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clickable { menuOpen = true }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Reset Lyrics") },
+                            onClick = { PlayerViewModel.resetLyrics(track); menuOpen = false }
                         )
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        playlists.forEach { playlist ->
+                            val inPlaylist = track.playlistIDs.contains(playlist.id)
                             DropdownMenuItem(
-                                text = { Text("Reset Lyrics") },
-                                onClick = { PlayerViewModel.resetLyrics(track); menuOpen = false }
-                            )
-                            playlists.forEach { playlist ->
-                                val inPlaylist = track.playlistIDs.contains(playlist.id)
-                                DropdownMenuItem(
-                                    text = { Text((if (inPlaylist) "Remove from " else "Add to ") + playlist.name) },
-                                    onClick = {
-                                        if (inPlaylist) LibraryViewModel.removeFromPlaylist(track, playlist)
-                                        else LibraryViewModel.addToPlaylist(track, playlist)
-                                        menuOpen = false
-                                    }
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("Delete", color = Color(0xFFE57373)) },
-                                onClick = { deleteTarget = track; menuOpen = false }
+                                text = { Text((if (inPlaylist) "Remove from " else "Add to ") + playlist.name) },
+                                onClick = {
+                                    if (inPlaylist) LibraryViewModel.removeFromPlaylist(track, playlist)
+                                    else LibraryViewModel.addToPlaylist(track, playlist)
+                                    menuOpen = false
+                                }
                             )
                         }
+                        DropdownMenuItem(
+                            text = { Text("Delete", color = Color(0xFFE57373)) },
+                            onClick = { deleteTarget = track; menuOpen = false }
+                        )
                     }
                 }
             }

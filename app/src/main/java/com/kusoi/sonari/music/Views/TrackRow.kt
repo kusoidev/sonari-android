@@ -1,7 +1,8 @@
 package com.kusoi.sonari.music.Views
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,17 +29,22 @@ import androidx.compose.ui.unit.sp
 import com.kusoi.sonari.music.Models.Track
 
 /** Library row. Mirrors the Swift TrackRowView, including the now-playing overlay. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackRow(
     track: Track,
     isCurrent: Boolean,
     isPlaying: Boolean,
-    onPlay: () -> Unit
+    onPlay: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onPlay() }
+            .combinedClickable(
+                onClick = { onPlay() },
+                onLongClick = { onLongPress?.invoke() }
+            )
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -97,7 +103,7 @@ fun TrackRow(
         Spacer(Modifier.width(4.dp))
 
         Icon(
-            imageVector = if (isCurrent && isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            imageVector = Icons.Filled.PlayArrow,
             contentDescription = "Play",
             tint = Color.White.copy(alpha = 0.5f),
             modifier = Modifier.size(26.dp)
