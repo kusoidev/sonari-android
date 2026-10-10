@@ -404,25 +404,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (queue.length <= 1) return const SizedBox.shrink();
 
     final current = player.queueIndex;
-    final upcoming = List.generate(
-      queue.length - 1,
-      (i) => (current + 1 + i) % queue.length,
-    );
+    final upcomingCount = queue.length - 1;
 
-    return ListView(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-          child: Text('Up Next',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white.withValues(alpha: 0.5))),
-        ),
-        for (var offset = 0; offset < upcoming.length; offset++)
-          _queueRow(player, queue[upcoming[offset]], offset + 1,
-              upcoming[offset], offset == 0),
-      ],
+    // Lazy list: only the visible rows are built. The old version built every
+    // row eagerly, so opening the queue on a huge playlist constructed
+    // thousands of widgets in one frame and janked the tap. Header is index 0.
+    return ListView.builder(
+      itemCount: upcomingCount + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Text('Up Next',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white.withValues(alpha: 0.5))),
+          );
+        }
+        final offset = index - 1;
+        final queuePos = (current + 1 + offset) % queue.length;
+        return _queueRow(
+          player,
+          queue[queuePos],
+          offset + 1,
+          queuePos,
+          offset == 0,
+        );
+      },
     );
   }
 
