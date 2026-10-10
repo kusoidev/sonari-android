@@ -1,0 +1,38 @@
+name: sonari
+description: "Sonari - a music player for YouTube audio with synced lyrics."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # audio playback + background media notification
+  just_audio: ^0.9.42
+  just_audio_background: ^0.0.1-beta.13
+  audio_session: ^0.1.21
+
+  # http
+  dio: ^5.7.0
+
+  # file system locations
+  path_provider: ^2.1.5
+
+  # artwork color extraction for the dynamic theme
+  image: ^4.3.0
+
+  # stable ids for tracks and playlists
+  uuid: ^4.6.0
+
+  # share/paste helpers not needed; clipboard is in services
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
