@@ -297,6 +297,23 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _streamNow(YouTubeSearchResult result) async {
+    // Queue every search result so playback continues through them, starting
+    // at the tapped one. Without this the queue was empty and playback stopped
+    // after the single track.
+    final queue = _controller.results
+        .map((r) => Track(
+              title: r.title,
+              youtubeID: r.id,
+              thumbnailURL: r.thumbnailURL,
+              artist: r.channelName,
+            ))
+        .toList();
+    final startIndex = _controller.results.indexWhere((r) => r.id == result.id);
+    if (startIndex >= 0) {
+      PlayerController.instance
+          .setQueue(queue, startIndex: startIndex);
+    }
+
     final docs = LibraryManager.instance.docsPath;
     for (final existing in LibraryManager.instance.tracks) {
       if (existing.youtubeID == result.id && existing.fileName != null) {
