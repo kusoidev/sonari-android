@@ -159,7 +159,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
               final track = top[i];
               return InkWell(
                 onTap: () {
-                  PlayerController.instance.setQueue(top, startIndex: i);
+                  // Queue the whole library and start at this track, not just
+                  // the 5 top-played items. Falls back to the strip if the
+                  // track isn't in the current list for some reason.
+                  final tracks = _controller.displayTracks;
+                  final idx = tracks.indexWhere((t) => t.id == track.id);
+                  if (idx >= 0) {
+                    PlayerController.instance.setQueue(tracks, startIndex: idx);
+                  } else {
+                    PlayerController.instance.setQueue(top, startIndex: i);
+                  }
                   PlayerController.instance.play(track);
                 },
                 child: Container(
