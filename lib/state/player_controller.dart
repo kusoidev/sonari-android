@@ -147,6 +147,7 @@ class PlayerController extends ChangeNotifier {
       final file = await saved.localFile();
       if (file != null) await _playFile(file, saved);
     } catch (e) {
+      debugPrint('[player] download/play failed: $e');
       isLoadingStream = false;
       isDownloading = false;
       downloadProgress = 0;

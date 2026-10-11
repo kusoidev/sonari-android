@@ -208,18 +208,36 @@ class DownloadService extends ChangeNotifier {
     final docs = await getApplicationDocumentsDirectory();
     final dest = File('${docs.path}/${safeTitle}_$videoID.m4a');
 
-    await Dio().download(
-      url,
-      dest.path,
-      onReceiveProgress: (received, total) {
-        if (total > 0 && onProgress != null) {
-          onProgress((received / total).clamp(0, 1).toDouble());
-        }
-      },
-      options: Options(
-        receiveTimeout: const Duration(minutes: 5),
-      ),
-    );
+    try {
+      await Dio().download(
+        url,
+        dest.path,
+        onReceiveProgress: (received, total) {
+          if (total > 0 && onProgress != null) {
+            onProgress((received / total).clamp(0, 1).toDouble());
+          }
+        },
+        options: Options(
+          connectTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(minutes: 10),
+        ),
+      );
+    } on DioException catch (e) {
+      debugPrint('[download] failed: type=${e.type} msg=${e.message} '
+          'err=${e.error} stack=${e.stackTrace}');
+      // Remove any partial file so a retry starts clean.
+      if (dest.existsSync()) {
+        try { dest.deleteSync(); } catch (_) {}
+      }
+      rethrow;
+    } catch (e, st) {
+      debugPrint('[download] non-dio error: $e\n$st');
+      if (dest.existsSync()) {
+        try { dest.deleteSync(); } catch (_) {}
+      }
+      rethrow;
+    }
     return dest;
   }
 
