@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:just_audio_background/just_audio_background.dart';
@@ -57,6 +57,28 @@ class PlayerController extends ChangeNotifier {
   int? _lyricSeekHoldIndex;
   DateTime _lyricSeekHoldUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// High-frequency values live in their own notifiers. The position stream
+  /// ticks many times a second; routing that through ChangeNotifier rebuilt
+  /// every AnimatedBuilder(PlayerController) in the tree, including every
+  /// library row. Only widgets that actually show time listen to these.
+  final ValueNotifier<double> timeNotifier = ValueNotifier<double>(0);
+  final ValueNotifier<double> durationNotifier = ValueNotifier<double>(0);
+  final ValueNotifier<int> lyricIndexNotifier = ValueNotifier<int>(0);
+
+  /// 1/30s sampler. Same cadence the iOS app uses for its time observer, so a
+  /// line switches on the boundary instead of up to a stream-tick late.
+  Timer? _ticker;
+
+  /// How the lyrics view renders. Karaoke sweeps a bright fill across the
+  /// current line; plain is the big-current-line list.
+  LyricsMode lyricsMode = LyricsMode.load();
+
+  void setLyricsMode(LyricsMode mode) {
+    lyricsMode = mode;
+    mode.save();
+    notifyListeners();
+  }
+
   Future<void> init() async {
     _processingSub = _player.processingStateStream.listen((state) {
       if (state == ja.ProcessingState.completed) {
@@ -104,6 +126,9 @@ class PlayerController extends ChangeNotifier {
     _hasRecordedPlayForCurrent = false;
     _lyricSeekHoldIndex = null;
     _lyricSeekHoldUntil = DateTime.fromMillisecondsSinceEpoch(0);
+    timeNotifier.value = 0;
+    durationNotifier.value = 0;
+    lyricIndexNotifier.value = 0;
     notifyListeners();
 
     final local = await track.localFile();
@@ -193,21 +218,35 @@ class PlayerController extends ChangeNotifier {
   void _attachListeners() {
     _positionSub?.cancel();
     _durationSub?.cancel();
-    _positionSub = _player.positionStream.listen((pos) {
-      if (isSeeking) return;
-      currentTime = pos.inMilliseconds / 1000.0;
-      final d = _player.duration;
-      if (d != null && d.inMilliseconds > 0) {
-        duration = d.inMilliseconds / 1000.0;
-      }
-      _updateLyricLine();
-      notifyListeners();
-    });
+
     _durationSub = _player.durationStream.listen((d) {
       if (d != null && d.inMilliseconds > 0) {
         duration = d.inMilliseconds / 1000.0;
-        notifyListeners();
+        durationNotifier.value = duration;
       }
+    });
+
+    // Sample the live player position at 1/30s, the same cadence the iOS app's
+    // time observer uses. The old code rebuilt the entire AnimatedBuilder tree
+    // on every position-stream tick; now time and lyric-index changes only
+    // touch their own ValueNotifiers, so the rest of the app stays still.
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      if (isSeeking) return;
+      final pos = _player.position;
+      final t = pos.inMilliseconds / 1000.0;
+      currentTime = t;
+      timeNotifier.value = t;
+
+      final d = _player.duration;
+      if (d != null &&
+          d.inMilliseconds > 0 &&
+          (d.inMilliseconds / 1000.0) != duration) {
+        duration = d.inMilliseconds / 1000.0;
+        durationNotifier.value = duration;
+      }
+
+      _updateLyricLine();
     });
   }
 
@@ -244,7 +283,8 @@ class PlayerController extends ChangeNotifier {
         time.isFinite ? time.clamp(0, effectiveMax).toDouble() : 0.0;
     await _player.seek(Duration(milliseconds: (clamped * 1000).round()));
     currentTime = clamped;
-    notifyListeners();
+    timeNotifier.value = clamped;
+    _updateLyricLine();
   }
 
   Future<void> skipForward() => seek(currentTime + 15);
@@ -264,6 +304,7 @@ class PlayerController extends ChangeNotifier {
     if (idx >= 0) {
       currentLyricIndex = idx;
       currentLyricLine = line.text;
+      lyricIndexNotifier.value = idx;
       _lyricSeekHoldIndex = idx;
       _lyricSeekHoldUntil = DateTime.now().add(const Duration(seconds: 1));
     }
@@ -272,9 +313,9 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
     await _player.seek(Duration(milliseconds: (target * 1000).round()));
     currentTime = _player.position.inMilliseconds / 1000.0;
+    timeNotifier.value = currentTime;
     isSeeking = false;
     _updateLyricLine();
-    notifyListeners();
   }
 
   void toggleLoop() {
@@ -386,6 +427,9 @@ class PlayerController extends ChangeNotifier {
     _lyricSeekHoldUntil = DateTime.fromMillisecondsSinceEpoch(0);
     queue = [];
     queueIndex = 0;
+    timeNotifier.value = 0;
+    durationNotifier.value = 0;
+    lyricIndexNotifier.value = 0;
     notifyListeners();
   }
 
@@ -506,29 +550,38 @@ class PlayerController extends ChangeNotifier {
         (computed != currentLyricIndex || currentLyricLine.isEmpty)) {
       currentLyricIndex = computed;
       currentLyricLine = lyrics[computed].text;
+      // High-frequency: only the notifier, never notifyListeners(). The lyrics
+      // view listens to this directly, so a line change never rebuilds the
+      // rest of the app.
+      lyricIndexNotifier.value = computed;
     }
   }
 
   Future<void> _refreshTheme(Track track) async {
     final targetID = track.id;
     final remote = track.thumbnailURL;
+
     if (remote != null) {
       try {
-        final res = await Dio().get<List<int>>(
-          remote,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final bytes = res.data;
-        if (bytes != null && currentTrack?.id == targetID) {
-          final newTheme = AppTheme.fromBytes(Uint8List.fromList(bytes));
+        // Reuse the disk-cached thumbnail instead of a second network fetch,
+        // then run the color extraction off the main isolate.
+        final file = await ThumbnailCache.instance
+            .ensureCached(track.youtubeID, remote);
+        if (file != null) {
+          final bytes = await file.readAsBytes();
           if (currentTrack?.id == targetID) {
-            theme = newTheme;
-            notifyListeners();
+            final newTheme =
+                await compute(AppTheme.fromBytesSync, bytes);
+            if (currentTrack?.id == targetID) {
+              theme = newTheme;
+              notifyListeners();
+            }
+            return;
           }
-          return;
         }
       } catch (_) {}
     }
+
     if (currentTrack?.id == targetID) {
       theme = AppTheme.dark;
       notifyListeners();
@@ -551,11 +604,131 @@ class PlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _ticker?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();
     _stateSub?.cancel();
     _processingSub?.cancel();
+    timeNotifier.dispose();
+    durationNotifier.dispose();
+    lyricIndexNotifier.dispose();
     _player.dispose();
     super.dispose();
+  }
+}
+
+/// How the lyrics view renders. Persisted to a one-line file in Documents so
+/// the choice survives a restart. main() calls LyricsMode.init() before runApp.
+enum LyricsMode {
+  karaoke,
+  plain;
+
+  static File? _file;
+  static String _key = 'karaoke';
+
+  static Future<void> init(String docsPath) async {
+    _file = File('$docsPath/lyrics_mode.txt');
+    try {
+      if (_file!.existsSync()) {
+        final raw = _file!.readAsStringSync().trim();
+        if (raw.isNotEmpty) _key = raw;
+      }
+    } catch (_) {}
+  }
+
+  static LyricsMode load() =>
+      _key == 'plain' ? LyricsMode.plain : LyricsMode.karaoke;
+
+  void save() {
+    _key = name;
+    try {
+      _file?.writeAsStringSync(name, flush: true);
+    } catch (_) {}
+  }
+}
+
+/// Pacing + reveal math for the karaoke sweep. Ported from the iOS
+/// PlayerViewModel (karaokeFraction / revealedFraction / classifyLyricLine).
+/// Pure functions so the lyrics widget can call them per frame without
+/// rebuilding anything.
+class LyricMath {
+  static String classify(List<LyricLine> lyrics, int idx) {
+    if (idx < 0 || idx >= lyrics.length) return 'normal';
+    final line = lyrics[idx];
+    final nextLine = idx + 1 < lyrics.length ? lyrics[idx + 1] : null;
+    final prevLine = idx - 1 >= 0 ? lyrics[idx - 1] : null;
+
+    final stripped = line.text.replaceAll(' ', '');
+    final chars = stripped.isEmpty ? 1 : stripped.length;
+    final timeSlot = nextLine != null ? nextLine.time - line.time : 4.0;
+    final cps = chars / (timeSlot > 0.1 ? timeSlot : 0.1);
+
+    final samples = <double>[];
+    final lo = (idx - 4) < 0 ? 0 : idx - 4;
+    final hi = (idx + 4) > lyrics.length - 1 ? lyrics.length - 1 : idx + 4;
+    for (var i = lo; i <= hi; i++) {
+      final l = lyrics[i];
+      if (l.text.isEmpty) continue;
+      final n = i + 1 < lyrics.length ? lyrics[i + 1] : null;
+      final strippedLine = l.text.replaceAll(' ', '');
+      final c = strippedLine.isEmpty ? 1 : strippedLine.length;
+      final t = n != null ? n.time - l.time : 4.0;
+      samples.add(c / (t > 0.1 ? t : 0.1));
+    }
+    final avg = samples.isEmpty
+        ? cps
+        : samples.reduce((a, b) => a + b) / samples.length;
+    final ratio = cps / (avg < 0.5 ? 0.5 : avg);
+    final silenceBefore =
+        prevLine != null ? line.time - (prevLine.time + 0.2) : 0.0;
+    final dramaBoost = silenceBefore > 0.8 ? 0.3 : 0.0;
+
+    if (ratio > 1.55) return 'fast';
+    if (ratio < 0.60 || dramaBoost > 0) return 'slow';
+    return 'normal';
+  }
+
+  /// Fraction (0...1) of the current line that should be bright at time `now`.
+  /// A single smooth monotonic curve, same as the fixed iOS version.
+  static double revealedFraction(
+      List<LyricLine> lyrics, int idx, double now) {
+    if (idx < 0 || idx >= lyrics.length) return 0;
+    final line = lyrics[idx];
+    final totalChars = line.text.length;
+    if (totalChars <= 0) return 0;
+
+    final cls = classify(lyrics, idx);
+    final lineStart = line.time;
+    final lineEnd = idx + 1 < lyrics.length
+        ? lyrics[idx + 1].time
+        : lineStart + 4;
+    final lineDur = (lineEnd - lineStart) < 0.15 ? 0.15 : (lineEnd - lineStart);
+    final lookahead = cls == 'fast' ? 0.40 : (cls == 'slow' ? 0.22 : 0.30);
+    final rawT = ((now - lineStart + lookahead) / lineDur).clamp(0.0, 1.0);
+
+    double eased;
+    if (cls == 'fast') {
+      eased = rawT < 0.35
+          ? (rawT / 0.35) * 0.85
+          : 0.85 + ((rawT - 0.35) / 0.65) * 0.15;
+    } else if (cls == 'slow') {
+      eased = rawT < 0.55
+          ? math.pow(rawT / 0.55, 1.4).toDouble() * 0.65
+          : 0.65 + ((rawT - 0.55) / 0.45) * 0.35;
+    } else {
+      eased = rawT < 0.5
+          ? 2.4 * rawT * rawT
+          : 1 - math.pow(-2 * rawT + 2, 2).toDouble() / 2.4;
+    }
+    return eased.clamp(0.0, 1.0);
+  }
+
+  /// Whether line `idx` is the current line at time `t`, computed from live
+  /// time so the highlight switches exactly on the boundary.
+  static bool isLineCurrent(List<LyricLine> lyrics, int idx, double t) {
+    if (idx < 0 || idx >= lyrics.length) return false;
+    if (t < lyrics[idx].time) return false;
+    if (idx + 1 < lyrics.length && t >= lyrics[idx + 1].time) return false;
+    return true;
   }
 }

@@ -61,6 +61,10 @@ class AppTheme {
     );
   }
 
+  /// Static entry point so the color math can run in a background isolate via
+  /// compute(), keeping the main thread free when a song starts.
+  static AppTheme fromBytesSync(Uint8List bytes) => fromBytes(bytes);
+
   /// Returns black or white, whichever contrasts better with the accent.
   static Color _bestForeground(Color color) {
     return _relativeLuminance(color) > 0.55 ? Colors.black : Colors.white;

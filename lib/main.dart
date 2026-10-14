@@ -15,6 +15,7 @@ Future<void> main() async {
   );
 
   await LibraryManager.instance.load();
+  await LyricsMode.init(LibraryManager.instance.docsPath);
   await PlayerController.instance.init();
 
   runApp(const SonariApp());

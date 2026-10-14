@@ -84,7 +84,27 @@ class _RootShellState extends State<RootShell> {
               Positioned.fill(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 78),
-                  child: _activeTab(),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.015),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: KeyedSubtree(
+                      key: ValueKey<Tab>(_selected),
+                      child: _activeTab(),
+                    ),
+                  ),
                 ),
               ),
               Positioned(
@@ -117,7 +137,9 @@ class _RootShellState extends State<RootShell> {
 
   Widget _tabBar() {
     final player = PlayerController.instance;
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
       padding: EdgeInsets.only(
         top: 10,
         bottom: MediaQuery.of(context).padding.bottom + 12,
@@ -139,16 +161,29 @@ class _RootShellState extends State<RootShell> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    tab.icon,
-                    size: 20,
-                    color: isSelected
-                        ? player.theme.accent
-                        : Colors.white.withValues(alpha: 0.4),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: isSelected ? 1 : 0),
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, t, child) {
+                      return Transform.scale(
+                        scale: 1.0 + 0.12 * t,
+                        child: Icon(
+                          tab.icon,
+                          size: 20,
+                          color: Color.lerp(
+                            Colors.white.withValues(alpha: 0.4),
+                            player.theme.accent,
+                            t,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    tab.label,
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight:
@@ -157,6 +192,7 @@ class _RootShellState extends State<RootShell> {
                           ? player.theme.accent
                           : Colors.white.withValues(alpha: 0.4),
                     ),
+                    child: Text(tab.label),
                   ),
                 ],
               ),

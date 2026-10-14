@@ -4,11 +4,14 @@ import '../models/lyric_line.dart';
 import '../models/track.dart';
 import '../state/player_controller.dart';
 import '../widgets/cached_thumbnail.dart';
+import '../widgets/karaoke_text.dart';
 import '../widgets/theme_background.dart';
 
 /// Lyrics tab. Port of the iOS LyricsView: a mini player header that expands
 /// into full transport controls, then a center-anchored, auto-scrolling lyric
-/// list with tap-to-seek and per-line editing.
+/// list with tap-to-seek, per-line editing, and a karaoke sweep on the current
+/// line. The list only rebuilds when the active line changes; the karaoke
+/// sweep repaints just the one current line off the 30Hz time notifier.
 class LyricsScreen extends StatefulWidget {
   final bool isActive;
   const LyricsScreen({super.key, required this.isActive});
@@ -20,76 +23,105 @@ class LyricsScreen extends StatefulWidget {
 class _LyricsScreenState extends State<LyricsScreen> {
   bool _isExpanded = false;
   final ScrollController _scrollController = ScrollController();
-  int _lastScrolledIndex = -1;
+
+  int _lastIndex = -1;
+  List<GlobalKey> _lineKeys = [];
+  int _keysForLength = -1;
 
   int? _editingIndex;
   final TextEditingController _editController = TextEditingController();
   final FocusNode _editFocus = FocusNode();
 
+  PlayerController get _player => PlayerController.instance;
+
   @override
   void initState() {
     super.initState();
-    PlayerController.instance.fetchLyricsForCurrentTrack();
-    PlayerController.instance.addListener(_onPlayerChanged);
+    _player.fetchLyricsForCurrentTrack();
+    _player.addListener(_onStructuralChange);
+    _player.lyricIndexNotifier.addListener(_onIndexChange);
+    _lastIndex = _player.currentLyricIndex;
+    // The tab is built fresh on entry (only the active tab stays mounted), so
+    // jump to the current line with no animation once the list has laid out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToCurrent(animate: false);
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _scrollToCurrent(animate: false));
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant LyricsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The tab is unmounted while offscreen, so re-entering has no prior scroll
+    // position. Glide to the current line instead of snapping.
+    if (widget.isActive && !oldWidget.isActive) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _scrollToCurrent(animate: true));
+    }
   }
 
   @override
   void dispose() {
-    PlayerController.instance.removeListener(_onPlayerChanged);
+    _player.removeListener(_onStructuralChange);
+    _player.lyricIndexNotifier.removeListener(_onIndexChange);
     _scrollController.dispose();
     _editController.dispose();
     _editFocus.dispose();
     super.dispose();
   }
 
-  void _onPlayerChanged() {
-    final player = PlayerController.instance;
-    if (player.currentLyricIndex != _lastScrolledIndex) {
-      _lastScrolledIndex = player.currentLyricIndex;
-      _scrollToCurrent();
-    }
+  void _onStructuralChange() {
+    if (mounted) setState(() {});
   }
 
-  void _scrollToCurrent() {
-    if (!_scrollController.hasClients) return;
-    final player = PlayerController.instance;
-    if (player.lyrics.isEmpty) return;
+  void _onIndexChange() {
+    final idx = _player.lyricIndexNotifier.value;
+    if (idx == _lastIndex) return;
+    _lastIndex = idx;
+    if (mounted) setState(() {});
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollToCurrent(animate: true));
+  }
 
-    // Each row has a roughly fixed height; scroll so the current line sits
-    // near the vertical center of the viewport.
-    const rowHeight = 52.0;
-    final target = (player.currentLyricIndex * rowHeight) -
-        (_scrollController.position.viewportDimension / 2) +
-        (rowHeight / 2);
-    final clamped = target.clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
-
-    _scrollController.animateTo(
-      clamped,
-      duration: const Duration(milliseconds: 450),
+  /// Scroll so the current line sits at the vertical center. Uses the line key
+  /// so the real measured height is honored instead of a fixed row guess.
+  void _scrollToCurrent({required bool animate}) {
+    final idx = _player.currentLyricIndex;
+    if (idx < 0 || idx >= _lineKeys.length) return;
+    final ctx = _lineKeys[idx].currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      alignment: 0.5,
+      duration: animate ? const Duration(milliseconds: 520) : Duration.zero,
       curve: Curves.easeOutCubic,
     );
   }
 
+  void _syncKeys(int count) {
+    if (_keysForLength == count) return;
+    _keysForLength = count;
+    _lineKeys = List<GlobalKey>.generate(count, (_) => GlobalKey());
+  }
+
   @override
   Widget build(BuildContext context) {
-    final player = PlayerController.instance;
     return AnimatedBuilder(
-      animation: player,
+      animation: _player,
       builder: (context, _) {
+        final track = _player.currentTrack;
         return Stack(
           children: [
             const Positioned.fill(child: ThemeBackground()),
             SafeArea(
               bottom: false,
-              child: player.currentTrack == null
+              child: track == null
                   ? _noTrackView()
                   : Column(
                       children: [
-                        _topMiniPlayer(player, player.currentTrack!),
-                        Expanded(child: _body(player)),
+                        _topMiniPlayer(track),
+                        Expanded(child: _body()),
                       ],
                     ),
             ),
@@ -99,17 +131,19 @@ class _LyricsScreenState extends State<LyricsScreen> {
     );
   }
 
-  Widget _body(PlayerController player) {
-    if (player.isFetchingLyrics) return _loadingView(player);
-    if (player.lyrics.isEmpty) return _emptyView();
-    return _lyricsList(player);
+  Widget _body() {
+    if (_player.isFetchingLyrics) return _loadingView();
+    if (_player.lyrics.isEmpty) return _emptyView();
+    return _lyricsList();
   }
 
-  Widget _topMiniPlayer(PlayerController player, Track track) {
+  Widget _topMiniPlayer(Track track) {
     return Column(
       children: [
         InkWell(
-          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          onTap: () {
+            setState(() => _isExpanded = !_isExpanded);
+          },
           child: Padding(
             padding: EdgeInsets.fromLTRB(16, 8, 16, _isExpanded ? 12 : 10),
             child: Row(
@@ -127,7 +161,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(player.titleDisplay(track),
+                      Text(_player.titleDisplay(track),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -135,7 +169,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
                               fontWeight: FontWeight.w600,
                               color: Colors.white)),
                       const SizedBox(height: 1),
-                      Text(player.artistDisplay(track),
+                      Text(_player.artistDisplay(track),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -145,114 +179,150 @@ class _LyricsScreenState extends State<LyricsScreen> {
                   ),
                 ),
                 IconButton(
-                  onPressed: player.togglePlayPause,
+                  onPressed: _player.togglePlayPause,
                   icon: Icon(
-                      player.isPlaying ? Icons.pause : Icons.play_arrow,
+                      _player.isPlaying ? Icons.pause : Icons.play_arrow,
                       size: 22,
                       color: Colors.white),
                 ),
                 IconButton(
-                  onPressed: player.nextTrack,
+                  onPressed: _player.nextTrack,
                   icon: Icon(Icons.skip_next,
                       size: 20, color: Colors.white.withValues(alpha: 0.55)),
+                ),
+                IconButton(
+                  onPressed: _showLyricsModeMenu,
+                  icon: Icon(Icons.more_horiz,
+                      size: 22, color: Colors.white.withValues(alpha: 0.55)),
                 ),
               ],
             ),
           ),
         ),
-        if (_isExpanded)
-          _expandedControls(player, track)
-        else
-          _progressBar(player, track),
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 320),
+          firstCurve: Curves.easeOutCubic,
+          secondCurve: Curves.easeOutCubic,
+          sizeCurve: Curves.easeOutCubic,
+          crossFadeState: _isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild: _progressBar(track),
+          secondChild: _expandedControls(track),
+        ),
       ],
     );
   }
 
-  Widget _progressBar(PlayerController player, Track track) {
-    final dur = player.duration > 0
-        ? player.duration
-        : (track.duration ?? 0);
-    final fraction = dur > 0 ? (player.currentTime / dur).clamp(0.0, 1.0) : 0.0;
-    return SizedBox(
-      height: 2,
-      child: FractionallySizedBox(
-        alignment: Alignment.centerLeft,
-        widthFactor: fraction,
-        child: Container(color: player.theme.accent),
-      ),
+  void _showLyricsModeMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1E),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.graphic_eq,
+                    color: _player.lyricsMode == LyricsMode.karaoke
+                        ? _player.theme.accent
+                        : Colors.white54),
+                title: const Text('Karaoke Highlight',
+                    style: TextStyle(color: Colors.white)),
+                trailing: _player.lyricsMode == LyricsMode.karaoke
+                    ? Icon(Icons.check, color: _player.theme.accent)
+                    : null,
+                onTap: () {
+                  _player.setLyricsMode(LyricsMode.karaoke);
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.subject,
+                    color: _player.lyricsMode == LyricsMode.plain
+                        ? _player.theme.accent
+                        : Colors.white54),
+                title: const Text('Plain',
+                    style: TextStyle(color: Colors.white)),
+                trailing: _player.lyricsMode == LyricsMode.plain
+                    ? Icon(Icons.check, color: _player.theme.accent)
+                    : null,
+                onTap: () {
+                  _player.setLyricsMode(LyricsMode.plain);
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _expandedControls(PlayerController player, Track track) {
-    final duration = player.duration > 0 ? player.duration : 1.0;
+  Widget _progressBar(Track track) {
+    final dur = _player.duration > 0 ? _player.duration : (track.duration ?? 0);
+    return ValueListenableBuilder<double>(
+      valueListenable: _player.timeNotifier,
+      builder: (context, t, _) {
+        final fraction = dur > 0 ? (t / dur).clamp(0.0, 1.0) : 0.0;
+        return SizedBox(
+          height: 2,
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: fraction,
+            child: Container(color: _player.theme.accent),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _expandedControls(Track track) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
       child: Column(
         children: [
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 3,
-              activeTrackColor: Colors.white,
-              inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
-              thumbColor: Colors.white,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-            ),
-            child: Slider(
-              value: player.currentTime.clamp(0, duration),
-              max: duration,
-              onChanged: (v) => player.seek(v),
-            ),
-          ),
-          Row(
-            children: [
-              Text(_formatTime(player.currentTime),
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.45))),
-              const Spacer(),
-              Text(_formatTime(duration),
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.45))),
-            ],
-          ),
+          _ExpandedSlider(
+              player: _player, fallbackDuration: track.duration ?? 1),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               IconButton(
-                onPressed: player.toggleLoop,
+                onPressed: _player.toggleLoop,
                 icon: Icon(
-                  player.loopMode == LoopMode.one
+                  _player.loopMode == LoopMode.one
                       ? Icons.repeat_one
                       : Icons.repeat,
-                  color: player.loopMode == LoopMode.none
+                  color: _player.loopMode == LoopMode.none
                       ? Colors.white.withValues(alpha: 0.3)
                       : Colors.white,
                 ),
               ),
               IconButton(
-                onPressed: player.previousTrack,
+                onPressed: _player.previousTrack,
                 icon: const Icon(Icons.skip_previous,
                     size: 30, color: Colors.white),
               ),
               IconButton(
-                onPressed: player.togglePlayPause,
+                onPressed: _player.togglePlayPause,
                 icon: Icon(
-                    player.isPlaying
+                    _player.isPlaying
                         ? Icons.pause_circle_filled
                         : Icons.play_circle_filled,
                     size: 52,
                     color: Colors.white),
               ),
               IconButton(
-                onPressed: player.nextTrack,
+                onPressed: _player.nextTrack,
                 icon: const Icon(Icons.skip_next,
                     size: 30, color: Colors.white),
               ),
               IconButton(
-                onPressed: () => setState(() => _isExpanded = false),
+                onPressed: () {
+                  setState(() => _isExpanded = false);
+                },
                 icon: Icon(Icons.close,
                     size: 18, color: Colors.white.withValues(alpha: 0.55)),
               ),
@@ -263,41 +333,39 @@ class _LyricsScreenState extends State<LyricsScreen> {
     );
   }
 
-  Widget _lyricsList(PlayerController player) {
+  Widget _lyricsList() {
+    final lyrics = _player.lyrics;
+    _syncKeys(lyrics.length);
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 40),
-      itemCount: player.lyrics.length,
+      itemCount: lyrics.length,
       itemBuilder: (context, index) {
-        return _lyricLine(player, player.lyrics[index], index);
+        return _lyricLine(lyrics[index], index);
       },
     );
   }
 
-  Widget _lyricLine(PlayerController player, LyricLine line, int index) {
-    final offset = index - player.currentLyricIndex;
+  Widget _lyricLine(LyricLine line, int index) {
+    final offset = index - _player.currentLyricIndex;
     final isCurrent = offset == 0;
     final isNear = offset.abs() <= 1;
     final isFar = offset.abs() >= 3;
     final isEditing = _editingIndex == index;
 
-    double fontSize;
-    if (isCurrent) {
-      fontSize = 26;
-    } else if (isNear) {
-      fontSize = 20;
-    } else {
-      fontSize = 17;
-    }
-
+    final fontSize = isCurrent ? 26.0 : (isNear ? 20.0 : 17.0);
+    final weight = isCurrent
+        ? FontWeight.bold
+        : (isNear ? FontWeight.w600 : FontWeight.w500);
     final color = isCurrent
         ? Colors.white
-        : isFar
+        : (isFar
             ? Colors.white.withValues(alpha: 0.2)
-            : Colors.white.withValues(alpha: 0.4);
+            : Colors.white.withValues(alpha: 0.4));
 
     if (isEditing) {
       return Padding(
+        key: _lineKeys[index],
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
         child: TextField(
           controller: _editController,
@@ -306,8 +374,8 @@ class _LyricsScreenState extends State<LyricsScreen> {
           style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: player.theme.accent),
-          cursorColor: player.theme.accent,
+              color: _player.theme.accent),
+          cursorColor: _player.theme.accent,
           decoration: InputDecoration(
             border: InputBorder.none,
             hintText: line.text,
@@ -319,30 +387,48 @@ class _LyricsScreenState extends State<LyricsScreen> {
     }
 
     return GestureDetector(
-      onTap: () => player.seekToLyric(line),
+      key: _lineKeys[index],
+      onTap: () => _player.seekToLyric(line),
       onLongPress: () => _startEdit(index, line),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOut,
+        curve: Curves.easeOutCubic,
         padding: EdgeInsets.symmetric(
           horizontal: 28,
           vertical: isCurrent ? 16 : 10,
         ),
         alignment: Alignment.center,
-        child: Text(
-          line.text,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: isCurrent
-                ? FontWeight.bold
-                : isNear
-                    ? FontWeight.w600
-                    : FontWeight.w500,
-            color: color,
-          ),
+        child: AnimatedScale(
+          scale: isCurrent ? 1.0 : (isNear ? 0.97 : 0.93),
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutBack,
+          child: _lineText(line, index, isCurrent, fontSize, weight, color),
         ),
       ),
+    );
+  }
+
+  Widget _lineText(LyricLine line, int index, bool isCurrent, double fontSize,
+      FontWeight weight, Color color) {
+    if (isCurrent && _player.lyricsMode == LyricsMode.karaoke) {
+      // Only the current line repaints per frame, driven by the time notifier.
+      return ValueListenableBuilder<double>(
+        valueListenable: _player.timeNotifier,
+        builder: (context, t, _) {
+          final frac = LyricMath.revealedFraction(_player.lyrics, index, t);
+          return KaraokeText(
+            text: line.text,
+            revealedFraction: frac,
+            fontSize: fontSize,
+            weight: weight,
+          );
+        },
+      );
+    }
+    return Text(
+      line.text,
+      textAlign: TextAlign.center,
+      style: TextStyle(fontSize: fontSize, fontWeight: weight, color: color),
     );
   }
 
@@ -355,11 +441,11 @@ class _LyricsScreenState extends State<LyricsScreen> {
   }
 
   void _commitEdit(int index) {
-    PlayerController.instance.editLyricLine(index, _editController.text);
+    _player.editLyricLine(index, _editController.text);
     setState(() => _editingIndex = null);
   }
 
-  Widget _loadingView(PlayerController player) {
+  Widget _loadingView() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -368,9 +454,9 @@ class _LyricsScreenState extends State<LyricsScreen> {
           const SizedBox(height: 16),
           Text('Finding lyrics...',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
-          if (player.lyricsSearchStatus.isNotEmpty) ...[
+          if (_player.lyricsSearchStatus.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(player.lyricsSearchStatus,
+            Text(_player.lyricsSearchStatus,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 12,
@@ -394,12 +480,9 @@ class _LyricsScreenState extends State<LyricsScreen> {
           const SizedBox(height: 12),
           GestureDetector(
             onTap: () =>
-                PlayerController.instance.fetchLyricsForCurrentTrack(
-              forceRefresh: true,
-            ),
+                _player.fetchLyricsForCurrentTrack(forceRefresh: true),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
@@ -439,9 +522,88 @@ class _LyricsScreenState extends State<LyricsScreen> {
       ),
     );
   }
+}
 
-  String _formatTime(double t) {
-    if (!t.isFinite || t < 0) return '0:00';
-    return '${t ~/ 60}:${(t.toInt() % 60).toString().padLeft(2, '0')}';
+/// Slider bound to the time notifier, so dragging only repaints the slider.
+class _ExpandedSlider extends StatefulWidget {
+  final PlayerController player;
+  final double fallbackDuration;
+  const _ExpandedSlider({
+    required this.player,
+    required this.fallbackDuration,
+  });
+
+  @override
+  State<_ExpandedSlider> createState() => _ExpandedSliderState();
+}
+
+class _ExpandedSliderState extends State<_ExpandedSlider> {
+  bool _dragging = false;
+  double _dragValue = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: widget.player.timeNotifier,
+      builder: (context, liveTime, _) {
+        final raw = widget.player.duration > 0
+            ? widget.player.duration
+            : widget.fallbackDuration;
+        final duration = raw.isFinite && raw > 0 ? raw : 1.0;
+        final value = (_dragging ? _dragValue : liveTime).clamp(0.0, duration);
+        return Column(
+          children: [
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                activeTrackColor: Colors.white,
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
+                thumbColor: Colors.white,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 14),
+              ),
+              child: Slider(
+                value: value,
+                max: duration,
+                onChangeStart: (v) {
+                  setState(() {
+                    _dragging = true;
+                    _dragValue = v;
+                  });
+                },
+                onChanged: (v) {
+                  setState(() => _dragValue = v);
+                },
+                onChangeEnd: (v) {
+                  widget.player.seek(v);
+                  setState(() => _dragging = false);
+                },
+              ),
+            ),
+            Row(
+              children: [
+                Text(_formatTime(value),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.45))),
+                const Spacer(),
+                Text(_formatTime(duration),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.45))),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
+}
+
+String _formatTime(double t) {
+  if (!t.isFinite || t < 0) return '0:00';
+  final total = t.toInt();
+  return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
 }

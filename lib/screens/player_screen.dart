@@ -7,6 +7,9 @@ import '../widgets/theme_background.dart';
 
 /// Player tab. Port of the iOS PlayerView: artwork that shrinks into a header
 /// when the queue is shown, seek bar, transport controls, and the up-next list.
+/// The header state change is animated with a spring (AnimatedSize + a scale
+/// cross-fade), the seek bar and time labels rebuild off the time notifier, and
+/// the play button springs on tap.
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
 
@@ -19,20 +22,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isDragging = false;
   double _dragValue = 0;
 
+  // Snappy settle, matches the iOS queueSpring.
+  static const _queueSpring = Duration(milliseconds: 340);
+  static const _queueCurve = Cubic(0.22, 0.9, 0.32, 1.0);
+
+  PlayerController get _player => PlayerController.instance;
+
+  void _toggleQueue() {
+    setState(() => _showingQueue = !_showingQueue);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final player = PlayerController.instance;
     return AnimatedBuilder(
-      animation: player,
+      animation: _player,
       builder: (context, _) {
+        final track = _player.currentTrack;
         return Stack(
           children: [
             const Positioned.fill(child: ThemeBackground()),
             SafeArea(
               bottom: false,
-              child: player.currentTrack == null
+              child: track == null
                   ? _emptyState()
-                  : _content(player, player.currentTrack!),
+                  : _content(track),
             ),
           ],
         );
@@ -40,34 +53,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _content(PlayerController player, Track track) {
+  Widget _content(Track track) {
     return Column(
       children: [
         if (!_showingQueue) const Spacer(),
-        _header(player, track),
+        AnimatedSize(
+          duration: _queueSpring,
+          curve: _queueCurve,
+          alignment: Alignment.topCenter,
+          child: _header(track),
+        ),
         if (_showingQueue)
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(top: 20),
-              child: _upNextList(player),
+              child: _upNextList(),
             ),
           )
         else
           const Spacer(),
         Column(
           children: [
-            if (player.isDownloading)
+            if (_player.isDownloading)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: _downloadProgress(player),
+                child: _downloadProgress(),
               )
             else
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: _seekBar(player, track),
+                child: _seekBar(track),
               ),
             const SizedBox(height: 20),
-            _controls(player),
+            _controls(),
           ],
         ),
         const SizedBox(height: 24),
@@ -75,68 +93,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _header(PlayerController player, Track track) {
-    final side = _showingQueue
-        ? 56.0
-        : (MediaQuery.of(context).size.width - 64).clamp(0, 380).toDouble();
+  Widget _header(Track track) {
+    final fullSide =
+        (MediaQuery.of(context).size.width - 64).clamp(0, 380).toDouble();
+    final side = _showingQueue ? 56.0 : fullSide;
 
-    if (_showingQueue) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: _toggleQueue,
-              child: CachedThumbnail(
-                youtubeID: track.youtubeID,
-                remoteURL: track.thumbnailURL,
-                width: side,
-                height: side,
-                radius: 12,
-                iconSize: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(player.titleDisplay(track),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white)),
-                  const SizedBox(height: 2),
-                  Text(player.artistDisplay(track),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withValues(alpha: 0.5))),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    return AnimatedSwitcher(
+      duration: _queueSpring,
+      switchInCurve: _queueCurve,
+      switchOutCurve: _queueCurve,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: _showingQueue
+          ? _queueHeader(track, side)
+          : _fullHeader(track, side),
+    );
+  }
 
+  Widget _fullHeader(Track track, double side) {
     return Column(
+      key: const ValueKey('full'),
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: GestureDetector(
             onTap: _toggleQueue,
-            child: CachedThumbnail(
-              youtubeID: track.youtubeID,
-              remoteURL: track.thumbnailURL,
-              width: side,
-              height: side,
-              radius: 12,
-              iconSize: 56,
-            ),
+            child: _artwork(track, side),
           ),
         ),
         const SizedBox(height: 28),
@@ -144,7 +133,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             children: [
-              Text(player.titleDisplay(track),
+              Text(_player.titleDisplay(track),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
@@ -153,7 +142,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       fontWeight: FontWeight.bold,
                       color: Colors.white)),
               const SizedBox(height: 6),
-              Text(player.artistDisplay(track),
+              Text(_player.artistDisplay(track),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
@@ -167,106 +156,174 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _toggleQueue() {
-    setState(() => _showingQueue = !_showingQueue);
+  Widget _queueHeader(Track track, double side) {
+    return Padding(
+      key: const ValueKey('queue'),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Row(
+        children: [
+          GestureDetector(onTap: _toggleQueue, child: _artwork(track, side)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_player.titleDisplay(track),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white)),
+                const SizedBox(height: 2),
+                Text(_player.artistDisplay(track),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white.withValues(alpha: 0.5))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _seekBar(PlayerController player, Track track) {
-    final rawDuration = player.duration;
-    final duration = rawDuration.isFinite && rawDuration > 0 ? rawDuration : 1.0;
-    final current = _isDragging ? _dragValue : player.currentTime;
-    final fraction = (current / duration).clamp(0.0, 1.0);
+  Widget _artwork(Track track, double side) {
+    return AnimatedContainer(
+      duration: _queueSpring,
+      curve: _queueCurve,
+      width: side,
+      height: side,
+      child: CachedThumbnail(
+        youtubeID: track.youtubeID,
+        remoteURL: track.thumbnailURL,
+        width: side,
+        height: side,
+        radius: 12,
+        iconSize: side > 100 ? 56 : 20,
+      ),
+    );
+  }
 
+  Widget _seekBar(Track track) {
     return Column(
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (d) {
-                setState(() {
-                  _isDragging = true;
-                  _dragValue =
-                      (d.localPosition.dx / width * duration).clamp(0, duration);
-                });
-              },
-              onHorizontalDragUpdate: (d) {
-                setState(() {
-                  _dragValue =
-                      (d.localPosition.dx / width * duration).clamp(0, duration);
-                });
-              },
-              onHorizontalDragEnd: (_) {
-                player.seek(_dragValue);
-                setState(() => _isDragging = false);
-              },
-              onTapDown: (d) {
-                final value = (d.localPosition.dx / width * duration)
-                    .clamp(0.0, duration)
-                    .toDouble();
-                player.seek(value);
-              },
-              child: SizedBox(
-                height: 20,
-                child: Stack(
-                  alignment: Alignment.centerLeft,
+        ValueListenableBuilder<double>(
+          valueListenable: _player.timeNotifier,
+          builder: (context, liveTime, _) {
+            final rawDuration = _player.duration;
+            final duration =
+                rawDuration.isFinite && rawDuration > 0 ? rawDuration : 1.0;
+            final current = _isDragging ? _dragValue : liveTime;
+            final fraction = (current / duration).clamp(0.0, 1.0);
+
+            return Column(
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth;
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onHorizontalDragStart: (d) {
+                        setState(() {
+                          _isDragging = true;
+                          _dragValue =
+                              (d.localPosition.dx / width * duration)
+                                  .clamp(0, duration);
+                        });
+                      },
+                      onHorizontalDragUpdate: (d) {
+                        setState(() {
+                          _dragValue =
+                              (d.localPosition.dx / width * duration)
+                                  .clamp(0, duration);
+                        });
+                      },
+                      onHorizontalDragEnd: (_) {
+                        _player.seek(_dragValue);
+                        setState(() => _isDragging = false);
+                      },
+                      onTapDown: (d) {
+                        final value = (d.localPosition.dx / width * duration)
+                            .clamp(0.0, duration)
+                            .toDouble();
+                        _player.seek(value);
+                      },
+                      child: SizedBox(
+                        height: 20,
+                        child: Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            FractionallySizedBox(
+                              widthFactor: fraction,
+                              child: Container(
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: _player.theme.accent,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              left: (fraction * width) -
+                                  (_isDragging ? 8 : 6),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeOutCubic,
+                                width: _isDragging ? 16 : 12,
+                                height: _isDragging ? 16 : 12,
+                                decoration: BoxDecoration(
+                                  color: _player.theme.accent,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.3),
+                                      blurRadius: 3,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    Container(
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    FractionallySizedBox(
-                      widthFactor: fraction,
-                      child: Container(
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: player.theme.accent,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: (fraction * width) - (_isDragging ? 8 : 6),
-                      child: Container(
-                        width: _isDragging ? 16 : 12,
-                        height: _isDragging ? 16 : 12,
-                        decoration: BoxDecoration(
-                          color: player.theme.accent,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
+                    Text(_formatTime(current),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.4))),
+                    const Spacer(),
+                    Text(_formatTime(duration),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.4))),
                   ],
                 ),
-              ),
+              ],
             );
           },
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Text(_formatTime(current),
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.4))),
-            const Spacer(),
-            Text(_formatTime(duration),
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.4))),
-          ],
         ),
       ],
     );
   }
 
-  Widget _downloadProgress(PlayerController player) {
+  Widget _downloadProgress() {
     return Column(
       children: [
         Row(
@@ -283,7 +340,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     fontWeight: FontWeight.w500,
                     color: Colors.white.withValues(alpha: 0.6))),
             const Spacer(),
-            Text('${(player.downloadProgress * 100).toInt()}%',
+            Text('${(_player.downloadProgress * 100).toInt()}%',
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -294,7 +351,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ClipRRect(
           borderRadius: BorderRadius.circular(2),
           child: LinearProgressIndicator(
-            value: player.downloadProgress.clamp(0, 1),
+            value: _player.downloadProgress.clamp(0, 1),
             minHeight: 4,
             backgroundColor: Colors.white.withValues(alpha: 0.12),
             valueColor: const AlwaysStoppedAnimation(Colors.white),
@@ -304,55 +361,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _controls(PlayerController player) {
+  Widget _controls() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         children: [
           Expanded(
             child: _smallControl(
-              icon: player.loopMode == LoopMode.one
+              icon: _player.loopMode == LoopMode.one
                   ? Icons.repeat_one
                   : Icons.repeat,
-              label: _loopLabel(player.loopMode),
-              active: player.loopMode != LoopMode.none,
-              onTap: player.toggleLoop,
+              label: _loopLabel(_player.loopMode),
+              active: _player.loopMode != LoopMode.none,
+              onTap: _player.toggleLoop,
             ),
           ),
           Expanded(
             child: IconButton(
-              onPressed: player.previousTrack,
+              onPressed: _player.previousTrack,
               icon: Icon(Icons.skip_previous,
                   size: 32, color: Colors.white.withValues(alpha: 0.85)),
             ),
           ),
-          Expanded(
-            child: GestureDetector(
-              onTap: player.togglePlayPause,
-              child: Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  color: player.theme.accent,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: player.theme.accent.withValues(alpha: 0.35),
-                      blurRadius: 12,
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  player.isPlaying ? Icons.pause : Icons.play_arrow,
-                  size: 34,
-                  color: player.theme.onAccent,
-                ),
-              ),
-            ),
-          ),
+          Expanded(child: _PlayButton(player: _player)),
           Expanded(
             child: IconButton(
-              onPressed: player.nextTrack,
+              onPressed: _player.nextTrack,
               icon: Icon(Icons.skip_next,
                   size: 32, color: Colors.white.withValues(alpha: 0.85)),
             ),
@@ -361,8 +395,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: _smallControl(
               icon: Icons.shuffle,
               label: 'Shuffle',
-              active: player.isShuffled,
-              onTap: player.shuffleQueue,
+              active: _player.isShuffled,
+              onTap: _player.shuffleQueue,
             ),
           ),
         ],
@@ -381,11 +415,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon,
-              size: 20,
-              color: active
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.3)),
+          AnimatedScale(
+            scale: active ? 1.0 : 0.92,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: Icon(icon,
+                size: 20,
+                color: active
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.3)),
+          ),
           const SizedBox(height: 3),
           Text(label,
               style: TextStyle(
@@ -399,16 +438,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _upNextList(PlayerController player) {
-    final queue = player.queue;
+  Widget _upNextList() {
+    final queue = _player.queue;
     if (queue.length <= 1) return const SizedBox.shrink();
 
-    final current = player.queueIndex;
+    final current = _player.queueIndex;
     final upcomingCount = queue.length - 1;
 
-    // Lazy list: only the visible rows are built. The old version built every
-    // row eagerly, so opening the queue on a huge playlist constructed
-    // thousands of widgets in one frame and janked the tap. Header is index 0.
     return ListView.builder(
       itemCount: upcomingCount + 1,
       itemBuilder: (context, index) {
@@ -425,89 +461,104 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final offset = index - 1;
         final queuePos = (current + 1 + offset) % queue.length;
         return _queueRow(
-          player,
           queue[queuePos],
           offset + 1,
           queuePos,
           offset == 0,
+          offset,
         );
       },
     );
   }
 
-  Widget _queueRow(PlayerController player, Track track, int number,
-      int index, bool isNext) {
-    return InkWell(
-      onTap: () => player.playTrackAt(index),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        decoration: BoxDecoration(
-          color: isNext
-              ? Colors.white.withValues(alpha: 0.04)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              child: Text('$number',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: isNext
-                          ? Colors.white.withValues(alpha: 0.8)
-                          : Colors.white.withValues(alpha: 0.35))),
-            ),
-            const SizedBox(width: 12),
-            CachedThumbnail(
-              youtubeID: track.youtubeID,
-              remoteURL: track.thumbnailURL,
-              width: 42,
-              height: 42,
-              iconSize: 14,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(player.titleDisplay(track),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight:
-                              isNext ? FontWeight.w600 : FontWeight.w500,
-                          color: isNext
-                              ? Colors.white
-                              : Colors.white.withValues(alpha: 0.8))),
-                  const SizedBox(height: 2),
-                  Text(player.artistDisplay(track),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white.withValues(alpha: 0.35))),
-                ],
-              ),
-            ),
-            if (isNext)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text('NEXT',
+  Widget _queueRow(
+      Track track, int number, int index, bool isNext, int offset) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('queue-$index'),
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: 260 + (offset.clamp(0, 6) * 40)),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, (1 - t) * 12),
+            child: child,
+          ),
+        );
+      },
+      child: InkWell(
+        onTap: () => _player.playTrackAt(index),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: BoxDecoration(
+            color: isNext
+                ? Colors.white.withValues(alpha: 0.04)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 18,
+                child: Text('$number',
                     style: TextStyle(
-                        fontSize: 9,
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white.withValues(alpha: 0.4))),
+                        color: isNext
+                            ? Colors.white.withValues(alpha: 0.8)
+                            : Colors.white.withValues(alpha: 0.35))),
               ),
-          ],
+              const SizedBox(width: 12),
+              CachedThumbnail(
+                youtubeID: track.youtubeID,
+                remoteURL: track.thumbnailURL,
+                width: 42,
+                height: 42,
+                iconSize: 14,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_player.titleDisplay(track),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight:
+                                isNext ? FontWeight.w600 : FontWeight.w500,
+                            color: isNext
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.8))),
+                    const SizedBox(height: 2),
+                    Text(_player.artistDisplay(track),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.35))),
+                  ],
+                ),
+              ),
+              if (isNext)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('NEXT',
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white.withValues(alpha: 0.4))),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -548,5 +599,61 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String _formatTime(double t) {
     if (!t.isFinite || t < 0) return '0:00';
     return '${t ~/ 60}:${(t.toInt() % 60).toString().padLeft(2, '0')}';
+  }
+}
+
+/// The big accent play/pause circle. Springs on press and eases the icon swap.
+class _PlayButton extends StatefulWidget {
+  final PlayerController player;
+  const _PlayButton({required this.player});
+
+  @override
+  State<_PlayButton> createState() => _PlayButtonState();
+}
+
+class _PlayButtonState extends State<_PlayButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.player.theme.accent;
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.player.togglePlayPause,
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: Container(
+          width: 68,
+          height: 68,
+          decoration: BoxDecoration(
+            color: accent,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.35),
+                blurRadius: 12,
+              ),
+            ],
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            transitionBuilder: (child, animation) => ScaleTransition(
+              scale: animation,
+              child: FadeTransition(opacity: animation, child: child),
+            ),
+            child: Icon(
+              widget.player.isPlaying ? Icons.pause : Icons.play_arrow,
+              key: ValueKey(widget.player.isPlaying),
+              size: 34,
+              color: widget.player.theme.onAccent,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
