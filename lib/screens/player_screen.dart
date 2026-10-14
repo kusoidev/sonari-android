@@ -65,9 +65,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
         if (_showingQueue)
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: _upNextList(),
+            child: TweenAnimationBuilder<double>(
+              key: const ValueKey('queue-list'),
+              tween: Tween<double>(begin: 0, end: 1),
+              duration: _queueSpring,
+              curve: _queueCurve,
+              builder: (context, t, child) {
+                return Opacity(
+                  opacity: t,
+                  child: Transform.translate(
+                    offset: Offset(0, (1 - t) * 24),
+                    child: child,
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(top: 20),
+                child: _upNextList(),
+              ),
             ),
           )
         else
@@ -93,100 +108,93 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// One header that morphs between the full-screen layout and the compact
+  /// queue layout, instead of swapping two different widgets. The artwork and
+  /// the title/artist block are single elements that travel and resize, the
+  /// same idea as the iOS matchedGeometryEffect. Cross-fading two layouts (the
+  /// old AnimatedSwitcher) read as a pop because the artwork never moved.
   Widget _header(Track track) {
-    final fullSide =
-        (MediaQuery.of(context).size.width - 64).clamp(0, 380).toDouble();
+    final width = MediaQuery.of(context).size.width;
+    final fullSide = (width - 64).clamp(0, 380).toDouble();
     final side = _showingQueue ? 56.0 : fullSide;
 
-    return AnimatedSwitcher(
-      duration: _queueSpring,
-      switchInCurve: _queueCurve,
-      switchOutCurve: _queueCurve,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.96, end: 1.0).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: _showingQueue
-          ? _queueHeader(track, side)
-          : _fullHeader(track, side),
-    );
-  }
+    final artLeft = _showingQueue ? 20.0 : (width - fullSide) / 2;
+    final artTop = _showingQueue ? 12.0 : 0.0;
 
-  Widget _fullHeader(Track track, double side) {
-    return Column(
-      key: const ValueKey('full'),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: GestureDetector(
-            onTap: _toggleQueue,
-            child: _artwork(track, side),
-          ),
-        ),
-        const SizedBox(height: 28),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            children: [
-              Text(_player.titleDisplay(track),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
-              const SizedBox(height: 6),
-              Text(_player.artistDisplay(track),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.white.withValues(alpha: 0.5))),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+    final textTop = _showingQueue ? 12.0 : fullSide + 28;
+    final textLeft = _showingQueue ? 88.0 : 32.0;
+    final textRight = _showingQueue ? 20.0 : 32.0;
 
-  Widget _queueHeader(Track track, double side) {
-    return Padding(
-      key: const ValueKey('queue'),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Row(
+    final headerHeight = _showingQueue ? 80.0 : fullSide + 84;
+
+    return SizedBox(
+      width: width,
+      height: headerHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          GestureDetector(onTap: _toggleQueue, child: _artwork(track, side)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_player.titleDisplay(track),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white)),
-                const SizedBox(height: 2),
-                Text(_player.artistDisplay(track),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.5))),
-              ],
+          AnimatedPositioned(
+            duration: _queueSpring,
+            curve: _queueCurve,
+            left: artLeft,
+            top: artTop,
+            child: GestureDetector(
+              onTap: _toggleQueue,
+              child: _artwork(track, side),
             ),
+          ),
+          AnimatedPositioned(
+            duration: _queueSpring,
+            curve: _queueCurve,
+            left: textLeft,
+            right: textRight,
+            top: textTop,
+            child: _headerText(track),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _headerText(Track track) {
+    final align =
+        _showingQueue ? CrossAxisAlignment.start : CrossAxisAlignment.center;
+    final textAlign = _showingQueue ? TextAlign.left : TextAlign.center;
+    return Column(
+      crossAxisAlignment: align,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedDefaultTextStyle(
+          duration: _queueSpring,
+          curve: _queueCurve,
+          style: TextStyle(
+            fontSize: _showingQueue ? 16 : 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          child: Text(
+            _player.titleDisplay(track),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: textAlign,
+          ),
+        ),
+        const SizedBox(height: 4),
+        AnimatedDefaultTextStyle(
+          duration: _queueSpring,
+          curve: _queueCurve,
+          style: TextStyle(
+            fontSize: _showingQueue ? 13 : 15,
+            color: Colors.white.withValues(alpha: 0.5),
+          ),
+          child: Text(
+            _player.artistDisplay(track),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: textAlign,
+          ),
+        ),
+      ],
     );
   }
 
