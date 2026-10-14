@@ -22,9 +22,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isDragging = false;
   double _dragValue = 0;
 
-  // Snappy settle, matches the iOS queueSpring.
-  static const _queueSpring = Duration(milliseconds: 340);
-  static const _queueCurve = Cubic(0.22, 0.9, 0.32, 1.0);
+  // Settle timing for the header morph and queue reveal. easeInOutCubic is
+  // roughly 50% done at the halfway point, so short moves stay perceptible for
+  // the whole duration. The old (0.22, 0.9, 0.32, 1.0) curve was 94% done at
+  // halfway, and easeOutCubic was 88% done, so both read as instant snaps.
+  static const _queueSpring = Duration(milliseconds: 380);
+  static const _queueCurve = Curves.easeInOutCubic;
 
   PlayerController get _player => PlayerController.instance;
 

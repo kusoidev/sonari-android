@@ -127,6 +127,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             PlayerController.instance.setQueue(tracks, startIndex: trackIndex);
             PlayerController.instance.play(track);
           },
+          onLongPress: () => _trackOptions(track),
         );
       },
     );
@@ -381,6 +382,209 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (name != null && name.isNotEmpty) {
       _controller.createPlaylist(name);
     }
+  }
+
+  Future<void> _trackOptions(Track track) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1E),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        PlayerController.instance.titleDisplay(track),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.play_arrow, color: Colors.white),
+                title: const Text('Play',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, 'play'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.refresh, color: Colors.white),
+                title: const Text('Reset Lyrics',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, 'reset'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.white),
+                title: const Text('Rename',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, 'rename'),
+              ),
+              if (_controller.playlists.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.playlist_add, color: Colors.white),
+                  title: const Text('Add to Playlist',
+                      style: TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.pop(context, 'playlist'),
+                ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Delete',
+                    style: TextStyle(color: Colors.red)),
+                onTap: () => Navigator.pop(context, 'delete'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case 'play':
+        PlayerController.instance.play(track);
+        break;
+      case 'reset':
+        PlayerController.instance.resetLyrics(track);
+        _snack('Lyrics reset for "${PlayerController.instance.titleDisplay(track)}"');
+        break;
+      case 'rename':
+        await _renameTrack(track);
+        break;
+      case 'playlist':
+        await _addToPlaylist(track);
+        break;
+      case 'delete':
+        await _confirmDeleteTrack(track);
+        break;
+    }
+  }
+
+  Future<void> _renameTrack(Track track) async {
+    final textController = TextEditingController(
+        text: PlayerController.instance.titleDisplay(track));
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1E),
+          title: const Text('Rename Track',
+              style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: textController,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Track name',
+              hintStyle: TextStyle(color: Colors.white54),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, textController.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    if (name != null && name.isNotEmpty) {
+      _controller.rename(track, name);
+    }
+  }
+
+  Future<void> _addToPlaylist(Track track) async {
+    final playlist = await showModalBottomSheet<Playlist>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1E),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text('Add to Playlist',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white)),
+              ),
+              ..._controller.playlists.map((p) {
+                return ListTile(
+                  leading: const Icon(Icons.queue_music, color: Colors.white),
+                  title:
+                      Text(p.name, style: const TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.pop(context, p),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+    if (playlist != null) {
+      _controller.addToPlaylist(track, playlist);
+      _snack('Added to "${playlist.name}"');
+    }
+  }
+
+  Future<void> _confirmDeleteTrack(Track track) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1E),
+          title: const Text('Delete Track',
+              style: TextStyle(color: Colors.white)),
+          content: Text(
+            'Remove "${PlayerController.instance.titleDisplay(track)}" and its downloaded file?',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child:
+                  const Text('Delete', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true) {
+      _controller.delete(track);
+      _snack('Deleted');
+    }
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _playlistOptions(Playlist playlist) async {

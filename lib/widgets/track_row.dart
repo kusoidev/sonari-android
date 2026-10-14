@@ -9,8 +9,14 @@ import 'cached_thumbnail.dart';
 class TrackRow extends StatelessWidget {
   final Track track;
   final VoidCallback onPlay;
+  final VoidCallback? onLongPress;
 
-  const TrackRow({super.key, required this.track, required this.onPlay});
+  const TrackRow({
+    super.key,
+    required this.track,
+    required this.onPlay,
+    this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +29,7 @@ class TrackRow extends StatelessWidget {
 
         return InkWell(
           onTap: onPlay,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(
