@@ -90,6 +90,34 @@ class PlayerController extends ChangeNotifier {
           state.playing && state.processingState != ja.ProcessingState.completed;
       notifyListeners();
     });
+
+    // Start the position sampler here, not only in _playFile. Audio can be
+    // playing before this process ever calls play() (for example the app was
+    // relaunched while the background service kept playing), and in that case
+    // the lyric highlight had no clock driving it at all.
+    _startTicker();
+  }
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      if (currentTrack == null) return;
+      if (isSeeking) return;
+      final pos = _player.position;
+      final t = pos.inMilliseconds / 1000.0;
+      currentTime = t;
+      timeNotifier.value = t;
+
+      final d = _player.duration;
+      if (d != null &&
+          d.inMilliseconds > 0 &&
+          (d.inMilliseconds / 1000.0) != duration) {
+        duration = d.inMilliseconds / 1000.0;
+        durationNotifier.value = duration;
+      }
+
+      _updateLyricLine();
+    });
   }
 
   List<Track> get currentQueue => queue;
@@ -226,28 +254,9 @@ class PlayerController extends ChangeNotifier {
       }
     });
 
-    // Sample the live player position at 1/30s, the same cadence the iOS app's
-    // time observer uses. The old code rebuilt the entire AnimatedBuilder tree
-    // on every position-stream tick; now time and lyric-index changes only
-    // touch their own ValueNotifiers, so the rest of the app stays still.
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(milliseconds: 33), (_) {
-      if (isSeeking) return;
-      final pos = _player.position;
-      final t = pos.inMilliseconds / 1000.0;
-      currentTime = t;
-      timeNotifier.value = t;
-
-      final d = _player.duration;
-      if (d != null &&
-          d.inMilliseconds > 0 &&
-          (d.inMilliseconds / 1000.0) != duration) {
-        duration = d.inMilliseconds / 1000.0;
-        durationNotifier.value = duration;
-      }
-
-      _updateLyricLine();
-    });
+    // The shared sampler already runs from init(). Restart it on each new
+    // playback so it picks up the freshly set audio source immediately.
+    _startTicker();
   }
 
   void _handleSongEnded() {

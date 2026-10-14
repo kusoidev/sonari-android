@@ -500,13 +500,26 @@ class LyricsService {
     return out;
   }
 
+  /// Cache schema version. Bump when the parsing or timing changes so old
+  /// entries (for example ones built before sub-second LRC support) are
+  /// discarded instead of silently reused with wrong timings.
+  static const _cacheVersion = 2;
+
   static Future<List<LyricLine>?> loadCachedLyrics(String youtubeID) async {
     final dir = await _ensureCacheDir();
     final file = File('${dir.path}/$youtubeID.json');
     if (!file.existsSync()) return null;
     try {
       final raw = await file.readAsString();
-      final list = jsonDecode(raw) as List;
+      final decoded = jsonDecode(raw);
+      // Only the versioned envelope is trusted. A bare list is a pre-version
+      // cache with unknown timing quality, so treat it as a miss.
+      if (decoded is! Map<String, dynamic> ||
+          decoded['v'] != _cacheVersion ||
+          decoded['lines'] is! List) {
+        return null;
+      }
+      final list = decoded['lines'] as List;
       final lines = list
           .map((e) => LyricLine.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -521,7 +534,10 @@ class LyricsService {
     final dir = await _ensureCacheDir();
     final file = File('${dir.path}/$youtubeID.json');
     await file.writeAsString(
-      jsonEncode(lines.map((l) => l.toJson()).toList()),
+      jsonEncode({
+        'v': _cacheVersion,
+        'lines': lines.map((l) => l.toJson()).toList(),
+      }),
       flush: true,
     );
   }
