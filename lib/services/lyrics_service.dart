@@ -446,6 +446,20 @@ class LyricsService {
     return completer.future;
   }
 
+  /// True when the line timings are uniform enough to be the synthesized
+  /// fallback rather than real LRC. Used to avoid caching and reusing the
+  /// fallback, which is why a track could look badly out of sync forever.
+  static bool isSynthesized(List<LyricLine> lines) {
+    if (lines.length < 3) return false;
+    final d0 = lines[1].time - lines[0].time;
+    if (d0 <= 0) return false;
+    for (var i = 1; i < lines.length - 1; i++) {
+      final d = lines[i + 1].time - lines[i].time;
+      if ((d - d0).abs() > 0.05) return false;
+    }
+    return true;
+  }
+
   static List<LyricLine>? parseLRC(String lrc) {
     final lines = <({double time, String text})>[];
     final pattern =
@@ -456,9 +470,18 @@ class LyricsService {
       if (match == null) continue;
       final mins = double.tryParse(match.group(1) ?? '0') ?? 0;
       final secs = double.tryParse(match.group(2) ?? '0') ?? 0;
+      // The fractional group is centiseconds or milliseconds depending on the
+      // source (2 or 3 digits). Normalize to seconds so lines do not snap to
+      // whole seconds, which drifts on any fast passage.
+      final fracRaw = match.group(3);
+      var frac = 0.0;
+      if (fracRaw != null && fracRaw.isNotEmpty) {
+        final v = double.tryParse(fracRaw) ?? 0;
+        frac = fracRaw.length >= 3 ? v / 1000.0 : v / 100.0;
+      }
       final text = (match.group(4) ?? '').trim();
       if (text.isEmpty) continue;
-      lines.add((time: mins * 60 + secs, text: text));
+      lines.add((time: mins * 60 + secs + frac, text: text));
     }
 
     lines.sort((a, b) => a.time.compareTo(b.time));

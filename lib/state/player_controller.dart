@@ -488,7 +488,10 @@ class PlayerController extends ChangeNotifier {
     if (!forceRefresh) {
       final cached = await LyricsService.loadCachedLyrics(track.youtubeID);
       if (currentTrack?.id != fetchID) return;
-      if (cached != null) {
+      // A synthesized (evenly spaced) cache is worse than nothing: it plays
+      // badly out of sync and would otherwise never be re-fetched. Ignore it
+      // and go to the network for real timing.
+      if (cached != null && !LyricsService.isSynthesized(cached)) {
         lyrics = cached;
         isFetchingLyrics = false;
         notifyListeners();
@@ -516,7 +519,11 @@ class PlayerController extends ChangeNotifier {
     lyricsSearchStatus = '';
     if (synced != null) {
       lyrics = synced;
-      await LyricsService.saveCachedLyrics(synced, track.youtubeID);
+      // Only persist real (non-uniform) timing. Caching the synthesized
+      // fallback would lock the track into bad sync on every later open.
+      if (!LyricsService.isSynthesized(synced)) {
+        await LyricsService.saveCachedLyrics(synced, track.youtubeID);
+      }
     }
     isFetchingLyrics = false;
     notifyListeners();
