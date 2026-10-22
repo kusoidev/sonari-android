@@ -155,7 +155,9 @@ private fun PlayerHeader(
     val horizontal by animateDpAsState(if (compact) 20.dp else 32.dp, Motion.header(), label = "hpad")
     val topPad by animateDpAsState(if (compact) 12.dp else 0.dp, Motion.header(), label = "toppad")
 
-    Column(Modifier.padding(horizontal = horizontal).padding(top = topPad)) {
+    // Springs undershoot their target, so an animated Dp headed for 0 can land
+    // slightly negative. padding() throws on that, so clamp at the call.
+    Column(Modifier.padding(horizontal = horizontal.coerceAtLeast(0.dp)).padding(top = topPad.coerceAtLeast(0.dp))) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (!compact) Spacer(Modifier.weight(1f))
             Box(
