@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -150,16 +151,29 @@ private fun PlayerHeader(
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp
     val fullSide = min(screenWidth - 64, 380).dp
+
+    // One spring drives every value so artwork, gaps and text settle together.
     val side by animateDpAsState(if (compact) 56.dp else fullSide, Motion.header(), label = "artSide")
     val corner by animateDpAsState(if (compact) 8.dp else 12.dp, Motion.header(), label = "artCorner")
     val horizontal by animateDpAsState(if (compact) 20.dp else 32.dp, Motion.header(), label = "hpad")
     val topPad by animateDpAsState(if (compact) 12.dp else 0.dp, Motion.header(), label = "toppad")
 
-    // Springs undershoot their target, so an animated Dp headed for 0 can land
-    // slightly negative. padding() throws on that, so clamp at the call.
-    Column(Modifier.padding(horizontal = horizontal.coerceAtLeast(0.dp)).padding(top = topPad.coerceAtLeast(0.dp))) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!compact) Spacer(Modifier.weight(1f))
+    // Text travels: 22sp centered under the art -> 16sp left of nothing, so it
+    // scales while the row reflows, the same way matchedGeometryEffect reads.
+    val titleSize by animateFloatAsState(if (compact) 16f else 22f, Motion.header(), label = "titleSize")
+    val artistSize by animateFloatAsState(if (compact) 13f else 15f, Motion.header(), label = "artistSize")
+    val gap by animateDpAsState(if (compact) 12.dp else 0.dp, Motion.header(), label = "textGap")
+
+    Column(
+        Modifier
+            .padding(horizontal = horizontal.coerceAtLeast(0.dp))
+            .padding(top = topPad.coerceAtLeast(0.dp))
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (compact) Arrangement.Start else Arrangement.Center
+        ) {
             Box(
                 Modifier.clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -173,54 +187,47 @@ private fun PlayerHeader(
                     corner = corner
                 )
             }
+
             if (compact) {
-                Spacer(Modifier.width(12.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        TrackText.titleDisplay(track),
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                    Text(
-                        TrackText.artistDisplay(track),
-                        color = Color.White.copy(alpha = 0.5f),
-                        fontSize = 13.sp,
-                        maxLines = 1
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-            } else {
+                Spacer(Modifier.width(gap.coerceAtLeast(0.dp)))
+                HeaderText(track, titleSize, artistSize, Alignment.Start)
                 Spacer(Modifier.weight(1f))
             }
         }
 
-        AnimatedVisibility(
-            visible = !compact,
-            enter = fadeIn(Motion.header()) + slideInVertically(Motion.header()) { it / 3 },
-            exit = fadeOut(Motion.quickFade())
-        ) {
-            Column(
-                Modifier.fillMaxWidth().padding(top = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    TrackText.titleDisplay(track),
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-                Text(
-                    TrackText.artistDisplay(track),
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 15.sp,
-                    maxLines = 1
-                )
-            }
+        if (!compact) {
+            Spacer(Modifier.height(28.dp))
+            HeaderText(track, titleSize, artistSize, Alignment.CenterHorizontally)
         }
+    }
+}
+
+/** Shared title block so the two header states use one set of text styles. */
+@Composable
+private fun HeaderText(
+    track: Track,
+    titleSize: Float,
+    artistSize: Float,
+    alignment: Alignment.Horizontal
+) {
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = alignment,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            TrackText.titleDisplay(track),
+            color = Color.White,
+            fontSize = titleSize.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
+        Text(
+            TrackText.artistDisplay(track),
+            color = Color.White.copy(alpha = 0.5f),
+            fontSize = artistSize.sp,
+            maxLines = 1
+        )
     }
 }
 

@@ -369,17 +369,21 @@ class PlayerEngine(context: Context) {
                 }
             }
 
-            val synced = runCatching {
+            val synced = try {
                 LyricsService.fetchSynced(
                     title = track.title,
                     artist = extractedArtist,
                     duration = trackDuration
                 ) { msg -> _lyricsSearchStatus.value = msg }
-            }.getOrNull()
+            } catch (t: Throwable) {
+                null
+            } finally {
+                // Whatever happens, the spinner must clear for this track.
+                if (_currentTrack.value?.id == fetchID) _isFetchingLyrics.value = false
+            }
 
             if (_currentTrack.value?.id != fetchID) return@launch
             _lyricsSearchStatus.value = ""
-            _isFetchingLyrics.value = false
             if (synced != null) {
                 _lyrics.value = synced
                 LyricsService.saveCached(synced, track.youtubeID)

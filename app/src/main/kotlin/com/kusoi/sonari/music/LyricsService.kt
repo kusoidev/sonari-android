@@ -114,17 +114,27 @@ object LyricsService {
     /** Returns the first non-null result and cancels the rest. */
     private suspend fun firstOf(tasks: List<suspend () -> String?>): String? = coroutineScope {
         if (tasks.isEmpty()) return@coroutineScope null
-        val channel = Channel<String?>(Channel.UNLIMITED)
+        val results = Channel<String?>(Channel.UNLIMITED)
         val children = tasks.map { task ->
-            launch(Dispatchers.IO) { channel.send(task()) }
+            launch(Dispatchers.IO) {
+                // A throwing task must still report, otherwise the receiver
+                // below waits for a message that never arrives and the
+                // "Finding lyrics" spinner hangs forever.
+                val value = try {
+                    task()
+                } catch (t: Throwable) {
+                    null
+                }
+                results.send(value)
+            }
         }
         var result: String? = null
         repeat(tasks.size) {
-            val candidate = channel.receive()
+            val candidate = results.receive()
             if (candidate != null && result == null) result = candidate
         }
         children.forEach { it.cancel() }
-        channel.close()
+        results.close()
         result
     }
 
