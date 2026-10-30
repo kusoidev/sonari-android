@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -43,7 +44,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
     Library("Library", Icons.Rounded.MusicNote),
     Lyrics("Lyrics", Icons.Rounded.TextFields),
     Player("Player", Icons.Rounded.PlayArrow),
-    Download("Download", Icons.Rounded.ArrowDownward)
+    Share("Share", Icons.Rounded.SwapHoriz)
 }
 
 /**
@@ -70,7 +71,7 @@ fun SonariRoot(engine: PlayerEngine) {
                     Tab.Library -> LibraryScreen(engine, onPlay = { selectedTab = Tab.Player })
                     Tab.Lyrics -> LyricsScreen(engine)
                     Tab.Player -> PlayerScreen(engine)
-                    Tab.Download -> DownloadScreen(engine)
+                    Tab.Share -> ShareScreen(engine, onAutoPlay = { selectedTab = Tab.Player })
                 }
             }
             TabBar(selected = selectedTab, accent = theme.accent) { selectedTab = it }

@@ -88,6 +88,31 @@ object Json {
         }
     }.getOrDefault(emptyList())
 
+    /** Encodes a track for the share wire in the exact shape iOS JSONEncoder
+     *  produces: addedAt is seconds since the 2001 reference date. */
+    fun trackToShare(t: Track): JSONObject = trackToJson(t).apply {
+        put("addedAt", (t.addedAt - IOS_EPOCH_OFFSET_MS) / 1000.0)
+    }
+
+    /** Reads a track off the share wire, accepting either platform's addedAt.
+     *  iOS sends seconds since 2001, Android sends epoch millis. Anything under
+     *  1e10 is treated as the iOS reference date, because epoch millis passed
+     *  the year 2001 back in 1970 and are always far larger. */
+    fun trackFromShare(o: JSONObject): Track {
+        val raw = o.optDouble("addedAt", Double.NaN)
+        val addedAt = when {
+            !raw.isFinite() -> System.currentTimeMillis()
+            raw < 1e10 -> (raw * 1000.0).toLong() + IOS_EPOCH_OFFSET_MS
+            else -> raw.toLong()
+        }
+        val scratch = JSONObject(o.toString())
+        scratch.put("addedAt", addedAt)
+        return trackFromJson(scratch)
+    }
+
+    /** Milliseconds between the Unix epoch and Apple's 2001 reference date. */
+    private const val IOS_EPOCH_OFFSET_MS = 978307200000L
+
     private fun trackToJson(t: Track) = JSONObject().apply {
         put("id", t.id)
         put("title", t.title)
