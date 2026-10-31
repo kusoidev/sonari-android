@@ -1,5 +1,11 @@
 package com.kusoi.sonari.music
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -92,23 +98,46 @@ fun PlayerScreen(engine: PlayerEngine) {
                 onToggleQueue = { showingQueue = !showingQueue }
             )
 
-            if (showingQueue) {
-                CompactHeader(track = current)
-                UpNextList(
-                    queue = queue,
-                    queueIndex = queueIndex,
-                    onSelect = { engine.playTrackAt(it) },
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-                ArtworkCard(track = current)
-                Spacer(Modifier.height(28.dp))
-                TitleBlock(track = current)
-                Spacer(Modifier.weight(1f))
+            // One animated swap between the player and the queue. A plain
+            // if/else cut straight from the big card to the list with no
+            // transition, which read as a flicker. Both halves now move on the
+            // same spring: the card fades and lifts, the queue rises in.
+            AnimatedContent(
+                targetState = showingQueue,
+                transitionSpec = {
+                    val enter = fadeIn(Motion.queueEnter()) +
+                        slideInVertically(Motion.queueEnter()) { it / 12 }
+                    val exit = fadeOut(Motion.queueEnter()) +
+                        slideOutVertically(Motion.queueEnter()) { -it / 16 }
+                    enter togetherWith exit
+                },
+                modifier = Modifier.weight(1f),
+                label = "playerQueue"
+            ) { queueOpen ->
+                if (queueOpen) {
+                    Column(Modifier.fillMaxSize()) {
+                        CompactHeader(track = current)
+                        UpNextList(
+                            queue = queue,
+                            queueIndex = queueIndex,
+                            onSelect = { engine.playTrackAt(it) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize()) {
+                        Spacer(Modifier.weight(1f))
+                        ArtworkCard(track = current)
+                        Spacer(Modifier.height(28.dp))
+                        TitleBlock(track = current)
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
             }
 
-            Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
+            // The root already insets the whole content box above the nav
+            // pill, so this only needs to breathe against the transport.
+            Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 10.dp)) {
                 if (isDownloading) {
                     DownloadProgress(progress = downloadProgress)
                 } else {
@@ -315,37 +344,57 @@ private fun Transport(
     onShuffle: () -> Unit,
     onQueue: () -> Unit
 ) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Play is centred against the full row, not against two side groups that
+    // happen to be similar widths. The old SpaceBetween row let the left group
+    // (shuffle + repeat) and the right group (queue) fight over the middle, so
+    // the button sat left of centre. Here the centre cluster is drawn on its
+    // own axis and the side glyphs hang off the edges.
+    Box(Modifier.fillMaxWidth().height(76.dp), contentAlignment = Alignment.Center) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GlyphButton(
+                    icon = Icons.Rounded.Shuffle,
+                    tint = if (shuffleOn) SonariText.primary else SonariText.tertiary,
+                    size = 38.dp,
+                    onClick = onShuffle
+                )
+                GlyphButton(
+                    icon = if (loopMode == LoopMode.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                    tint = if (loopMode != LoopMode.None) SonariText.primary else SonariText.tertiary,
+                    size = 38.dp,
+                    onClick = onLoop
+                )
+            }
+
             GlyphButton(
-                icon = Icons.Rounded.Shuffle,
-                tint = if (shuffleOn) SonariText.primary else SonariText.tertiary,
-                size = 34.dp,
-                onClick = onShuffle
-            )
-            GlyphButton(
-                icon = if (loopMode == LoopMode.One) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                tint = if (loopMode != LoopMode.None) SonariText.primary else SonariText.tertiary,
-                size = 34.dp,
-                onClick = onLoop
+                icon = Icons.Rounded.QueueMusic,
+                tint = SonariText.primary,
+                size = 38.dp,
+                onClick = onQueue
             )
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(
                 Icons.Rounded.SkipPrevious,
                 contentDescription = "Previous",
                 tint = if (canPrevious) SonariText.primary else SonariText.tertiary,
                 modifier = Modifier
                     .pressInflate()
-                    .size(48.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .clickable(enabled = canPrevious) { onPrevious() }
-                    .padding(10.dp)
+                    .padding(8.dp)
             )
 
             Box(
@@ -374,19 +423,12 @@ private fun Transport(
                 tint = if (canNext) SonariText.primary else SonariText.tertiary,
                 modifier = Modifier
                     .pressInflate()
-                    .size(48.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .clickable(enabled = canNext) { onNext() }
-                    .padding(10.dp)
+                    .padding(8.dp)
             )
         }
-
-        GlyphButton(
-            icon = Icons.Rounded.QueueMusic,
-            tint = SonariText.primary,
-            size = 34.dp,
-            onClick = onQueue
-        )
     }
 }
 

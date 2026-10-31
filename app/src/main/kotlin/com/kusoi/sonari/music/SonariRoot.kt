@@ -71,7 +71,9 @@ fun SonariRoot(engine: PlayerEngine) {
     Box(Modifier.fillMaxSize()) {
         ThemeBackground(animatedTheme)
 
-        Box(Modifier.fillMaxSize().padding(bottom = 96.dp)) {
+        // Must cover the whole pill: 64dp capsule + 14dp lift + the system
+        // navigation bar. 96dp left the transport sitting under the bar.
+        Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 108.dp)) {
             AnimatedContent(
                 targetState = selectedTab,
                 transitionSpec = {
