@@ -32,6 +32,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,12 +92,9 @@ fun SonariRoot(engine: PlayerEngine) {
             }
         }
 
-        // Navigation always carries the house violet. A sampled accent is
-        // right for the player where the sleeve is the whole point, but here
-        // it went pale on a light sleeve and read as a disabled control.
         FloatingTabBar(
             selected = selectedTab,
-            accent = SonariSurface.accent,
+            accent = theme.accent,
             modifier = Modifier.align(Alignment.BottomCenter),
             onSelect = { selectedTab = it }
         )
@@ -116,7 +115,20 @@ private fun FloatingTabBar(
 ) {
     val tabs = Tab.entries
     val selectedIndex = tabs.indexOf(selected)
-    val bubble by animateDpAsState(72.dp * selectedIndex, Motion.chip(), label = "bubble")
+
+    // The bubble is positioned from the measured slot width, not a guessed
+    // constant. A fixed 72dp offset drifted off the icon as soon as the row
+    // width was not exactly 5 x 72, and the 64dp circle never lined up with a
+    // 72dp slot in the first place.
+    var barWidth by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    val slotWidth = if (tabs.isEmpty()) 0.dp else barWidth / tabs.size
+    val bubbleWidth = slotWidth * 0.82f
+    val bubbleX by animateDpAsState(
+        targetValue = slotWidth * selectedIndex + (slotWidth - bubbleWidth) / 2f,
+        animationSpec = Motion.chip(),
+        label = "bubbleX"
+    )
 
     Box(
         modifier
@@ -127,6 +139,7 @@ private fun FloatingTabBar(
             Modifier
                 .fillMaxWidth()
                 .height(64.dp)
+                .onSizeChanged { barWidth = with(density) { it.width.toDp() } }
                 .shadow(24.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.5f), spotColor = accent.copy(alpha = 0.18f))
                 .clip(CircleShape)
                 .background(SonariSurface.glass),
@@ -135,9 +148,9 @@ private fun FloatingTabBar(
             Box(Modifier.fillMaxWidth().height(64.dp)) {
                 Box(
                     Modifier
-                        .offset(x = bubble)
-                        .size(64.dp)
-                        .padding(6.dp)
+                        .offset(x = bubbleX)
+                        .size(bubbleWidth)
+                        .align(Alignment.CenterStart)
                         .clip(CircleShape)
                         .background(accent)
                 )

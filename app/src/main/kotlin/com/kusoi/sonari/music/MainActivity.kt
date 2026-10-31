@@ -21,8 +21,16 @@ class MainActivity : ComponentActivity() {
 
     /** NEARBY_WIFI_DEVICES gates NSD discovery on Android 13+, and a denied
      *  grant returns an empty peer list with no error, so ask up front. */
+    private lateinit var engineRef: PlayerEngine
+
     private val nearbyWifiPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Re-tint from the current sleeve after the app comes back to the front. */
+    override fun onResume() {
+        super.onResume()
+        if (::engineRef.isInitialized) engineRef.refreshCurrentTheme()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,12 +43,16 @@ class MainActivity : ComponentActivity() {
             if (!granted) nearbyWifiPermission.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
         }
 
-        val engine = PlayerEngine(applicationContext)
+        val engine = SonariApp.engine(this)
+        engineRef = engine
+        startService(android.content.Intent(this, PlaybackService::class.java))
         setContent {
-            Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF050506)) {
+            Surface(modifier = Modifier.fillMaxSize(), color = SonariSurface.base) {
                 val theme = engine.theme.collectAsStateWithLifecycle().value
-                Box(Modifier.fillMaxSize().background(theme.backgroundBottom)) {
-                    SonariRoot(engine)
+                BootReveal {
+                    Box(Modifier.fillMaxSize().background(theme.backgroundBottom)) {
+                        SonariRoot(engine)
+                    }
                 }
             }
         }

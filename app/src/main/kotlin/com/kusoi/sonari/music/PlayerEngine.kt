@@ -114,6 +114,12 @@ class PlayerEngine(context: Context) {
 
     fun play(track: Track) {
         if (_currentTrack.value?.id == track.id) {
+            // Same track: resume, but make sure the room matches it. A cold
+            // start begins at AppTheme.Dark and would otherwise stay there.
+            scope.launch {
+                ThumbnailCache.preload(track)
+                refreshTheme(track)
+            }
             togglePlayPause()
             return
         }
@@ -182,12 +188,32 @@ class PlayerEngine(context: Context) {
     }
 
     private fun playFile(file: java.io.File) {
-        player.setMediaItem(MediaItem.fromUri(file.toURI().toString()))
+        val track = _currentTrack.value
+        val item = if (track != null) {
+            MediaItem.Builder()
+                .setUri(file.toURI().toString())
+                .setMediaMetadata(track.toMetadata())
+                .build()
+        } else {
+            MediaItem.fromUri(file.toURI().toString())
+        }
+        player.setMediaItem(item)
         player.prepare()
         player.playWhenReady = true
         recordCurrentPlay()
         startTicker()
-        }
+    }
+
+    /** Re-pushes the current track's metadata onto the player. The media
+     *  session reads it for the notification and ColorOS Fluid Cloud alert. */
+    fun publishMetadata() {
+        val track = _currentTrack.value ?: return
+        val current = player.currentMediaItem ?: return
+        player.replaceMediaItem(
+            player.currentMediaItemIndex,
+            current.buildUpon().setMediaMetadata(track.toMetadata()).build()
+        )
+    }
 
     private fun startTicker() {
         tickerJob?.cancel()
@@ -211,6 +237,19 @@ class PlayerEngine(context: Context) {
             LoopMode.One -> { player.seekTo(0); player.play() }
             LoopMode.All -> nextTrack()
             LoopMode.None -> stop()
+        }
+    }
+
+    /**
+     * Re-samples the sleeve of the current track. Called on start and resume
+     * so the whole app is tinted by the music even when the user has not
+     * tapped anything yet this session.
+     */
+    fun refreshCurrentTheme() {
+        val track = _currentTrack.value ?: return
+        scope.launch {
+            ThumbnailCache.preload(track)
+            refreshTheme(track)
         }
     }
 

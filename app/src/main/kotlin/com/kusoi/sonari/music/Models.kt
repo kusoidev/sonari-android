@@ -71,10 +71,10 @@ data class AppTheme(
 ) {
     companion object {
         val Dark = AppTheme(
-            backgroundTop = Color(0.08f, 0.08f, 0.09f),
-            backgroundBottom = Color(0.03f, 0.03f, 0.04f),
-            accent = Color.White,
-            onAccent = Color.Black
+            backgroundTop = Color(0.12f, 0.09f, 0.20f),
+            backgroundBottom = Color(0.03f, 0.02f, 0.06f),
+            accent = Color(0.545f, 0.361f, 0.965f),
+            onAccent = Color(0.08f, 0.05f, 0.13f)
         )
     }
 }
