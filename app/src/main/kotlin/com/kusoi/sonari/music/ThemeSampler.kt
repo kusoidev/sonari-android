@@ -23,24 +23,39 @@ object ThemeSampler {
         if (avg == null) return AppTheme.Dark
 
         val (hue, saturation, brightness) = rgbToHsb(avg)
-        val accent = hsbToRgb(
-            hue,
-            maxOf(saturation, 0.45f),
-            maxOf(brightness, 0.55f)
-        )
-        val topSaturation = maxOf(saturation * 0.55f, 0.12f)
-        val top = hsbToRgb(hue, topSaturation, 0.22f)
-        val bottom = hsbToRgb(hue, topSaturation * 0.4f, 0.06f)
+        // The accent is the brand violet pulled toward the sleeve hue. Purely
+        // sampling it turned pale sleeves into a near-white button, which
+        // reads as disabled. Hue follows the art, everything else is clamped.
+        val accentHue = lerpHue(0.755f, if (saturation < 0.12f) 0.755f else hue, 0.45f)
+        val accent = hsbToRgb(accentHue, 0.70f, 0.88f)
+        // The page is a violet room no matter what the sleeve looks like, so
+        // the sampled hue only shifts it. A grey sleeve lands on the house
+        // violet instead of a dead neutral.
+        val tintSaturation = if (saturation < 0.12f) 0.62f else saturation.coerceAtMost(0.9f)
+        val tintHue = if (saturation < 0.12f) 0.72f else hue
+        val top = hsbToRgb(tintHue, maxOf(tintSaturation * 0.75f, 0.42f), 0.30f)
+        val bottom = hsbToRgb(tintHue, maxOf(tintSaturation * 0.4f, 0.20f), 0.08f)
 
         return AppTheme(
             backgroundTop = top.toColor(),
             backgroundBottom = bottom.toColor(),
             accent = accent.toColor(),
-            onAccent = if (relativeLuminance(accent) > 0.55f) Color.Black else Color.White
+            onAccent = if (relativeLuminance(accent) > 0.55f) SonariText.onAccent else SonariText.primary
         )
     }
 
     private data class Rgb(val r: Float, val g: Float, val b: Float)
+
+    /** Shortest-path hue blend, both in 0..1. */
+    private fun lerpHue(a: Float, b: Float, t: Float): Float {
+        var d = b - a
+        if (d > 0.5f) d -= 1f
+        if (d < -0.5f) d += 1f
+        var h = a + d * t
+        if (h < 0f) h += 1f
+        if (h > 1f) h -= 1f
+        return h
+    }
 
     private fun relativeLuminance(rgb: Rgb): Float {
         fun linear(c: Float) = if (c <= 0.03928f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)

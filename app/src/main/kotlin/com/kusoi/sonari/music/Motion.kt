@@ -1,39 +1,51 @@
 package com.kusoi.sonari.music
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 
 /**
- * Every timing curve the iOS app uses, named. SwiftUI spring(response:
- * dampingFraction:) maps to Compose stiffness/damping, so these are tuned to
- * land on the same settle time rather than copied as raw numbers.
- *
- * Generic over T so the same spec serves Float, Dp and Color animations.
+ * One motion language for the whole app. Springs where something lands,
+ * eased tweens where something fades. Nothing bounces past 0.62 damping;
+ * overshoot reads as a toy.
  */
 object Motion {
-    /** Tab bar selection and chips: spring(response: 0.3, damping: 0.75). */
-    fun <T> chip() = spring<T>(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium)
+    /** Tab pill and chips: quick, slightly springy. */
+    fun <T> chip() = spring<T>(dampingRatio = 0.78f, stiffness = Spring.StiffnessMedium)
 
-    /** Player header morph: spring(response: 0.38, damping: 0.82). */
-    fun <T> header() = spring<T>(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+    /** Player header morph. */
+    fun <T> header() = spring<T>(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow)
 
-    /** Karaoke line scroll: spring(response: 0.55, damping: 0.82). */
-    fun <T> lyricScroll() = spring<T>(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow)
+    /** Lyrics list scroll: long enough to read as a glide, no overshoot. */
+    fun <T> lyricScroll() = spring<T>(dampingRatio = 0.92f, stiffness = Spring.StiffnessLow)
 
-    /** Line scale as it becomes current: spring(response: 0.45, damping: 0.78). */
-    fun <T> lyricScale() = spring<T>(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow)
+    /** Line scale and alpha as a line becomes current. */
+    fun <T> lyricScale() = spring<T>(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
 
-    /** Seek knob grow on drag: spring(response: 0.25). */
+    /** Seek knob grow on drag. */
     fun <T> knob() = spring<T>(dampingRatio = 0.8f, stiffness = Spring.StiffnessHigh)
 
-    /** Background tint crossfade: easeInOut 0.6s. */
-    fun <T> theme() = tween<T>(durationMillis = 600, easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f))
+    /** Background tint crossfade, matched to the sleeve load. */
+    fun <T> theme() = tween<T>(durationMillis = 900, easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f))
 
-    /** Small fades like the search Cancel button: easeOut 0.2s. */
-    fun <T> quickFade() = tween<T>(durationMillis = 200)
+    /** Small fades. */
+    fun <T> quickFade() = tween<T>(durationMillis = 220, easing = FastOutSlowInEasing)
 
-    /** Focus ring on text fields: easeOut 0.2s. */
+    /** Focus ring on text fields. */
     fun <T> focusRing() = tween<T>(durationMillis = 200)
+
+    /** Queue slide in and out of the player. */
+    fun <T> queueEnter() = spring<T>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
+
+    /** Artwork card lift when the play screen opens. */
+    fun <T> cardEnter() = spring<T>(dampingRatio = 0.88f, stiffness = Spring.StiffnessLow)
+
+    /** Crossfade between tabs. Linear so it reads as a dissolve, not a move. */
+    fun <T> tabFade() = tween<T>(durationMillis = 180, easing = LinearEasing)
+
+    /** Floating nav bar ride up on launch. */
+    fun <T> navEnter() = spring<T>(dampingRatio = 0.9f, stiffness = Spring.StiffnessLow)
 }

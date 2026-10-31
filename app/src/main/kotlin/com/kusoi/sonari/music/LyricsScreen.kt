@@ -1,10 +1,6 @@
 package com.kusoi.sonari.music
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -13,11 +9,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -26,20 +24,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,10 +47,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -66,9 +64,11 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * Port of Sonari/Views/LyricsView.swift. Collapsed mini-header with a 2dp
- * progress line, tap to expand a full transport row, and the lyric list that
- * scrolls the current line to center on a spring.
+ * Lyrics. A slim now-playing header up top, then the lyric list with the
+ * current line centred. Every line is the same composable so its identity
+ * never changes when it becomes current; only the animated values move. The
+ * list scrolls on a low-stiffness spring so a line arriving in the middle
+ * reads as a glide, and the highlight colour crossfades instead of cutting.
  */
 @Composable
 fun LyricsScreen(engine: PlayerEngine) {
@@ -81,6 +81,10 @@ fun LyricsScreen(engine: PlayerEngine) {
     val currentTime by engine.currentTime.collectAsStateWithLifecycle()
     val duration by engine.duration.collectAsStateWithLifecycle()
     val theme by engine.theme.collectAsStateWithLifecycle()
+    val queue by engine.queue.collectAsStateWithLifecycle()
+    val queueIndex by engine.queueIndex.collectAsStateWithLifecycle()
+    val loopMode by engine.loopMode.collectAsStateWithLifecycle()
+    val isShuffled by engine.isShuffled.collectAsStateWithLifecycle()
 
     var isExpanded by remember { mutableStateOf(false) }
     var lyricsMode by remember { mutableStateOf(LyricsMode.load()) }
@@ -96,25 +100,25 @@ fun LyricsScreen(engine: PlayerEngine) {
             track = current,
             isPlaying = isPlaying,
             accent = theme.accent,
-            expanded = isExpanded,
             progress = if (duration > 0) min(currentTime / duration, 1.0) else 0.0,
+            expanded = isExpanded,
             onTap = { isExpanded = !isExpanded },
             onPlayPause = { engine.togglePlayPause() },
             onNext = { engine.nextTrack() },
             onModeChange = { lyricsMode = it; it.save() }
         )
 
-        AnimatedVisibility(
-            visible = isExpanded,
-            enter = fadeIn() + slideInVertically { -it / 4 },
-            exit = fadeOut() + slideOutVertically { -it / 4 }
-        ) {
+        if (isExpanded) {
             ExpandedControls(
                 engine = engine,
                 duration = duration,
                 currentTime = currentTime,
                 isPlaying = isPlaying,
                 accent = theme.accent,
+                queueIndex = queueIndex,
+                queueSize = queue.size,
+                loopMode = loopMode,
+                shuffleOn = isShuffled,
                 onCollapse = { isExpanded = false }
             )
         }
@@ -138,100 +142,109 @@ private fun MiniHeader(
     track: Track,
     isPlaying: Boolean,
     accent: Color,
-    expanded: Boolean,
     progress: Double,
+    expanded: Boolean,
     onTap: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onModeChange: (LyricsMode) -> Unit
 ) {
-    var mode by remember { mutableStateOf(LyricsMode.load()) }
     var menuOpen by remember { mutableStateOf(false) }
 
     Column(
         Modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(top = 6.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+            .background(SonariSurface.card)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onTap() }
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().padding(start = 10.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Artwork(track.youtubeID, track.thumbnailURL, 36.dp, 6.dp, iconSize = 11.dp)
+            Artwork(track.youtubeID, track.thumbnailURL, 40.dp, 10.dp, iconSize = 12.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     TrackText.titleDisplay(track),
-                    color = Color.White,
-                    fontSize = 13.sp,
+                    color = SonariText.primary,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1
                 )
                 Text(
                     TrackText.artistDisplay(track),
-                    color = Color.White.copy(alpha = 0.45f),
-                    fontSize = 11.sp,
+                    color = SonariText.tertiary,
+                    fontSize = 12.sp,
                     maxLines = 1
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = "Play/pause",
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp).clickable(
+            Icon(
+                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = "Play/pause",
+                tint = SonariText.primary,
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { onPlayPause() }
-                )
-                Icon(
-                    Icons.Rounded.SkipNext,
-                    contentDescription = "Next",
-                    tint = Color.White.copy(alpha = 0.55f),
-                    modifier = Modifier.size(20.dp).clickable(
+                    .padding(6.dp)
+            )
+            Icon(
+                Icons.Rounded.SkipNext,
+                contentDescription = "Next",
+                tint = SonariText.secondary,
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { onNext() }
-                )
-                Box {
-                    Icon(
-                        Icons.Rounded.MoreHoriz,
-                        contentDescription = "Lyrics style",
-                        tint = Color.White.copy(alpha = 0.55f),
-                        modifier = Modifier.size(20.dp).clickable(
+                    .padding(7.dp)
+            )
+            Box {
+                Icon(
+                    Icons.Rounded.MoreHoriz,
+                    contentDescription = "Lyrics style",
+                    tint = SonariText.secondary,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { menuOpen = true }
+                        .padding(7.dp)
+                )
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Karaoke highlight") },
+                        onClick = {
+                            menuOpen = false
+                            onModeChange(LyricsMode.Karaoke)
+                        }
                     )
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Karaoke Highlight") },
-                            onClick = {
-                                menuOpen = false
-                                mode = LyricsMode.Karaoke
-                                mode.save()
-                                onModeChange(mode)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Plain") },
-                            onClick = {
-                                menuOpen = false
-                                mode = LyricsMode.Plain
-                                mode.save()
-                                onModeChange(mode)
-                            }
-                        )
-                    }
+                    DropdownMenuItem(
+                        text = { Text("Plain") },
+                        onClick = {
+                            menuOpen = false
+                            onModeChange(LyricsMode.Plain)
+                        }
+                    )
                 }
             }
         }
 
         if (!expanded) {
-            Box(Modifier.fillMaxWidth().height(2.dp).background(Color.White.copy(alpha = 0.1f))) {
+            Box(Modifier.fillMaxWidth().height(2.dp).background(Color.White.copy(alpha = 0.06f))) {
                 Box(
                     Modifier
                         .fillMaxWidth(progress.toFloat().coerceIn(0f, 1f))
@@ -250,64 +263,67 @@ private fun ExpandedControls(
     currentTime: Double,
     isPlaying: Boolean,
     accent: Color,
+    queueIndex: Int,
+    queueSize: Int,
+    loopMode: LoopMode,
+    shuffleOn: Boolean,
     onCollapse: () -> Unit
 ) {
     var sliderValue by remember(duration) { mutableStateOf(currentTime.toFloat()) }
     var dragging by remember { mutableStateOf(false) }
     val safeDuration = if (duration.isFinite() && duration > 0) duration else 1.0
 
-    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp)) {
-        Slider(
-            value = if (dragging) sliderValue else currentTime.toFloat().coerceIn(0f, safeDuration.toFloat()),
-            onValueChange = { sliderValue = it; dragging = true },
+    Column(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp, bottom = 8.dp)) {
+        AppleMusicThinSlider(
+            value = if (dragging) sliderValue / safeDuration.toFloat() else (currentTime / safeDuration).toFloat().coerceIn(0f, 1f),
+            activeColor = accent,
+            onValueChange = { sliderValue = it * safeDuration.toFloat(); dragging = true },
             onValueChangeFinished = {
                 engine.seek(sliderValue.toDouble())
                 dragging = false
-            },
-            valueRange = 0f..safeDuration.toFloat(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = accent,
-                inactiveTrackColor = Color.White.copy(alpha = 0.12f)
-            )
+            }
         )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatTime(currentTime), color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp)
-            Text(formatTime(safeDuration), color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp)
-        }
+        Spacer(Modifier.height(6.dp))
+        AppleMusicTimesRow(
+            elapsed = if (dragging) sliderValue.toDouble() else currentTime,
+            total = duration
+        )
+        Spacer(Modifier.height(14.dp))
+        AppleMusicTransport(
+            isPlaying = isPlaying,
+            canPrevious = queueIndex > 0,
+            canNext = queueIndex < queueSize - 1,
+            shuffleOn = shuffleOn,
+            loopMode = loopMode,
+            onPlayPause = { engine.togglePlayPause() },
+            onNext = { engine.nextTrack() },
+            onPrevious = { engine.previousTrack() },
+            onLoop = { engine.toggleLoop() },
+            onShuffle = { engine.shuffleQueue() }
+        )
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = "Play/pause",
-                tint = Color.White,
-                modifier = Modifier.size(44.dp).clickable(
+        Box(
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(SonariSurface.raised)
+                .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
-                ) { engine.togglePlayPause() }
-            )
-            Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Rounded.Close,
-                contentDescription = "Collapse",
-                tint = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier
-                    .size(30.dp)
-                    .background(Color.White.copy(alpha = 0.1f), CircleShape)
-                    .padding(8.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onCollapse() }
-            )
+                ) { onCollapse() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.Close, contentDescription = "Collapse", tint = SonariText.secondary, modifier = Modifier.size(16.dp))
         }
     }
 }
 
 /**
- * The lyric list. Every line is the same composable, so identity never changes
- * when a line becomes current. Only the current line animates its scale and,
- * in karaoke mode, recomputes per-character color every frame.
+ * Lyric list. The scroll target is the current line minus a fixed lookahead so
+ * the active line lands slightly above centre, which leaves room for the next
+ * line to arrive without a second correction. All per-line values are
+ * animated, so a change of current line is a transition rather than a swap.
  */
 @Composable
 private fun LyricList(
@@ -318,10 +334,13 @@ private fun LyricList(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
 
+    // Centre the active line. Half a viewport of padding above and below means
+    // the target index is the line itself, and the springs on each line carry
+    // the motion; this scroll just keeps it in the middle.
     LaunchedEffect(currentIndex) {
-        val target = (currentIndex - 3).coerceAtLeast(0)
-        listState.animateScrollToItem(target)
+        listState.animateScrollToItem(currentIndex)
     }
 
     Box(modifier.fillMaxSize()) {
@@ -329,7 +348,7 @@ private fun LyricList(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 120.dp, bottom = 240.dp)
+            contentPadding = PaddingValues(top = screenHeight * 0.34f, bottom = screenHeight * 0.40f)
         ) {
             itemsIndexed(lyrics) { index, line ->
                 val offset = index - currentIndex
@@ -337,13 +356,28 @@ private fun LyricList(
                 val isNear = abs(offset) == 1
                 val isFar = abs(offset) >= 3
 
-                val scale by animateFloatAsState(
-                    if (isCurrent) 1f else if (isNear) 0.97f else 0.93f,
+                val targetScale = when {
+                    isCurrent -> 1f
+                    isNear -> 0.96f
+                    else -> 0.9f
+                }
+                val scale by animateFloatAsState(targetScale, Motion.lyricScale(), label = "lyricScale")
+                val alpha by animateFloatAsState(
+                    when {
+                        isCurrent -> 1f
+                        isNear -> 0.55f
+                        isFar -> 0.18f
+                        else -> 0.34f
+                    },
                     Motion.lyricScale(),
-                    label = "lyricScale"
+                    label = "lyricAlpha"
                 )
                 val bottomPad by animateDpAsState(
-                    if (isCurrent) 36.dp else if (isNear) 28.dp else 20.dp,
+                    when {
+                        isCurrent -> 34.dp
+                        isNear -> 26.dp
+                        else -> 20.dp
+                    },
                     Motion.lyricScale(),
                     label = "lyricPad"
                 )
@@ -359,26 +393,28 @@ private fun LyricList(
                         ) { engine.seekToLyric(line) },
                     contentAlignment = Alignment.Center
                 ) {
+                    val textModifier = Modifier.scale(scale).alpha(alpha)
                     if (isCurrent && mode == LyricsMode.Karaoke) {
                         KaraokeLine(
                             engine = engine,
                             index = index,
                             text = line.text,
-                            fontSize = 26.sp,
-                            modifier = Modifier.scale(scale)
+                            fontSize = 27.sp,
+                            modifier = textModifier
                         )
                     } else {
+                        val color by animateColorAsState(
+                            if (isCurrent) SonariText.primary else SonariText.secondary,
+                            Motion.lyricScale(),
+                            label = "lyricColor"
+                        )
                         Text(
                             line.text,
-                            color = when {
-                                isCurrent -> Color.White
-                                isFar -> Color.White.copy(alpha = 0.2f)
-                                else -> Color.White.copy(alpha = 0.4f)
-                            },
+                            color = color,
                             fontSize = when {
-                                isCurrent -> 26.sp
-                                isNear -> 20.sp
-                                else -> 17.sp
+                                isCurrent -> 27.sp
+                                isNear -> 21.sp
+                                else -> 18.sp
                             },
                             fontWeight = when {
                                 isCurrent -> FontWeight.Bold
@@ -386,22 +422,23 @@ private fun LyricList(
                                 else -> FontWeight.Medium
                             },
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.scale(scale)
+                            modifier = textModifier
                         )
                     }
                 }
             }
         }
 
-        // Top and bottom fades so lines dissolve into the gradient.
+        // Top fade only. The bottom is handled by content padding so the last
+        // line can still be tapped when the track ends.
         Box(
             Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .height(80.dp)
+                .height(90.dp)
                 .background(
                     androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)
+                        listOf(SonariSurface.base.copy(alpha = 0.9f), Color.Transparent)
                     )
                 )
         )
@@ -409,9 +446,9 @@ private fun LyricList(
 }
 
 /**
- * One Text with per-character color, exactly like KaraokeText.build. The reveal
- * fraction is read from the engine every frame and glides across ~1.2 chars so
- * the leading edge is smooth, not stepped.
+ * One Text with per-character colour. The reveal fraction is read from the
+ * engine every frame and glides across ~1.2 chars so the leading edge is
+ * smooth. Same curve as iOS; do not add holds or beat terms here.
  */
 @Composable
 private fun KaraokeLine(
@@ -421,11 +458,18 @@ private fun KaraokeLine(
     fontSize: androidx.compose.ui.unit.TextUnit,
     modifier: Modifier = Modifier
 ) {
+    val isPlaying by engine.isPlaying.collectAsStateWithLifecycle()
     var fraction by remember { mutableStateOf(0.0) }
     LaunchedEffect(index) {
         while (true) {
             withFrameNanos {
-                fraction = engine.revealedFraction(index, engine.smoothTime())
+                // Paused playback holds the line fully lit. A frozen half-swept
+                // line reads as a rendering bug, not as a pause.
+                fraction = if (isPlaying) {
+                    engine.revealedFraction(index, engine.smoothTime())
+                } else {
+                    1.0
+                }
             }
         }
     }
@@ -435,9 +479,9 @@ private fun KaraokeLine(
     val annotated = buildAnnotatedString {
         chars.forEachIndexed { i, ch ->
             val distance = brightCount - i
-            val brightness = ((distance / 1.2).coerceIn(0.0, 1.0))
-            val opacity = 0.32f + (1f - 0.32f) * brightness.toFloat()
-            withStyle(SpanStyle(color = Color.White.copy(alpha = opacity))) {
+            val brightness = (distance / 1.2).coerceIn(0.0, 1.0)
+            val alpha = 0.34f + (1f - 0.34f) * brightness.toFloat()
+            withStyle(SpanStyle(color = SonariText.primary.copy(alpha = alpha))) {
                 append(ch.toString())
             }
         }
@@ -459,14 +503,14 @@ private fun LoadingLyrics(status: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(34.dp))
+        CircularProgressIndicator(color = SonariSurface.accent, strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
         Spacer(Modifier.height(16.dp))
-        Text("Finding lyrics...", color = Color.White.copy(alpha = 0.5f), fontSize = 14.sp)
+        Text("Finding lyrics", color = SonariText.secondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         if (status.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
             Text(
                 status,
-                color = Color.White.copy(alpha = 0.3f),
+                color = SonariText.tertiary,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 32.dp)
@@ -482,26 +526,28 @@ private fun NoLyrics(onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            Icons.Rounded.TextFields,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.2f),
-            modifier = Modifier.size(32.dp)
-        )
-        Spacer(Modifier.height(12.dp))
-        Text("No synced lyrics found", color = Color.White.copy(alpha = 0.5f), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(16.dp))
+        Box(
+            Modifier.size(64.dp).clip(CircleShape).background(SonariSurface.raised),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.TextFields, contentDescription = null, tint = SonariText.tertiary, modifier = Modifier.size(26.dp))
+        }
+        Spacer(Modifier.height(18.dp))
+        Text("No synced lyrics", color = SonariText.primary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Text("Try a different search or add them later.", color = SonariText.tertiary, fontSize = 13.sp)
+        Spacer(Modifier.height(20.dp))
         Box(
             Modifier
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.1f))
+                .background(SonariSurface.accent)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
                 ) { onRetry() }
-                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .padding(horizontal = 26.dp, vertical = 12.dp)
         ) {
-            Text("Retry", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
+            Text("Retry", color = SonariText.onAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -513,7 +559,15 @@ private fun NoTrackPlaying() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("No track playing", color = Color.White.copy(alpha = 0.5f), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-        Text("Play a song to see lyrics here.", color = Color.White.copy(alpha = 0.25f), fontSize = 14.sp)
+        Box(
+            Modifier.size(64.dp).clip(CircleShape).background(SonariSurface.raised),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.Equalizer, contentDescription = null, tint = SonariText.tertiary, modifier = Modifier.size(26.dp))
+        }
+        Spacer(Modifier.height(18.dp))
+        Text("No track playing", color = SonariText.primary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Text("Play a song to see its lyrics here.", color = SonariText.tertiary, fontSize = 13.sp)
     }
 }
