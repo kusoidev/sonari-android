@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sonari splash mark: a waveform-to-circle hybrid mark, same shape logic as Mochy but with Sonari styling -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="235dp"
+    android:height="235dp"
+    android:viewportWidth="235"
+    android:viewportHeight="235">
+    <!-- Outer circle boundary (stroke only, filled later) -->
+    <path
+        android:pathData="M117.5 117.5m0,58.5a58.5,58.5 0,1 1,0,117a58.5,58.5 0,1 1,0,-117"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineJoin="round"/>
+    <!-- Waveform shape inside the circle - three peaks suggesting a musical note / sonarrade -->
+    <path
+        android:pathData="M70 95 C55 110 65 130 85 145 C105 160 130 150 145 135"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="14"
+        android:strokeLineCap="round"
+        android:fillColor="#FFFFFF"/>
+    <path
+        android:pathData="M165 95 C150 110 145 130 125 145 C105 160 80 150 60 135"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="14"
+        android:strokeLineCap="round"
+        android:fillColor="#FFFFFF"/>
+    <path
+        android:pathData="M117 50 C130 30 115 10 100 25 C85 40 70 50 55 65"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:fillColor="#FFFFFF"/>
+</vector>

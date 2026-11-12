@@ -1,0 +1,51 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.kotlin/
+
+# Mac
+.DS_Store
+
+# build folders
+build/
+app/build/
+androidApp/build/
+composeApp/build/
+cast/build/
+cast-empty/build/
+crashlytics/build/
+crashlytics-empty/build/
+lastfm/build/
+lastfm-empty/build/
+*/build/
+
+# Gradle
+.gradle/
+
+# Kotlin Multiplatform
+/.kotlin
+
+# Logs
+*.log
+
+# Reference source repositories (never commit)
+BitChord-main/
+ArchiveTune-main/
+PixelMusic-main/
+
+# Local/secrets
+local.properties
+app/google-services.json
+app/google-services.json.disabled
+keystore.jks
+*.keystore
+app/reply_next.json
+app/yt_video_next.json
+app/server.json
