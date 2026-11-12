@@ -95,6 +95,15 @@ These are ignored by git and should remain local:
 - build outputs (`build/`, `.gradle/`, etc.)
 - any local debug dumps or secrets
 
+## Credits
+
+Sonari is heavily based on:
+
+- [Echo Music](https://github.com/EchoMusicApp/Echo-Music)
+- [Mochy Music](https://github.com/realidkroo/Mochy-Music)
+
+Huge thanks to their developers and contributors.
+
 ## License
 
 See [LICENSE](LICENSE) for licensing information.
