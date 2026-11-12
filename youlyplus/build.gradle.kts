@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.youlyplus"
+  namespace = "app.music.backend.sonari.youlyplus"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

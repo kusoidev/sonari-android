@@ -10,7 +10,7 @@
     android:paddingEnd="10dp"
     android:paddingTop="8dp"
     android:paddingBottom="8dp"
-    android:theme="@style/Theme.Widget.echomusic">
+    android:theme="@style/Theme.Widget.sonari">
 
     <LinearLayout
         android:id="@+id/widget_playlist_player_section"

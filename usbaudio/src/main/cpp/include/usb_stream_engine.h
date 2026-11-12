@@ -8,7 +8,7 @@
 #include <vector>
 #include <linux/usbdevice_fs.h>
 
-namespace echo::music::usbaudio {
+namespace sonari::music::usbaudio {
 
 /**
  * Isochronous USB Streaming Engine managing URB allocation, submission, and reaping
@@ -135,4 +135,4 @@ private:
     std::vector<UrbContext> sync_urbs_;
 };
 
-} // namespace echo::music::usbaudio
+} // namespace sonari::music::usbaudio

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.echomusic" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.sonari" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowSplashScreenBackground">@android:color/black</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
@@ -17,5 +17,5 @@
     </style>
 
     <!-- Widget Theme for Android 12+ with Dynamic Colors -->
-    <style name="Theme.Widget.echomusic" parent="@android:style/Theme.DeviceDefault.DayNight" />
+    <style name="Theme.Widget.sonari" parent="@android:style/Theme.DeviceDefault.DayNight" />
 </resources>

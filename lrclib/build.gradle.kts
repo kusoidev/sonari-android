@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.lrclib"
+  namespace = "app.music.backend.sonari.lrclib"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

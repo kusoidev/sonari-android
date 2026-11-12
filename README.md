@@ -99,7 +99,7 @@ These are ignored by git and should remain local:
 
 Sonari is heavily based on:
 
-- [Echo Music](https://github.com/EchoMusicApp/Echo-Music)
+- [Sonari](https://github.com/SonariApp/Sonari)
 - [Mochy Music](https://github.com/realidkroo/Mochy-Music)
 
 Huge thanks to their developers and contributors.

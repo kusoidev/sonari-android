@@ -25,7 +25,7 @@ if (hasGoogleServicesConfig) {
 }
 
 android {
-  namespace = "echo.music.iad1tya"
+  namespace = "app.music.backend.sonari"
   compileSdk = 37
   ndkVersion = "28.2.13676358"
 
@@ -331,7 +331,7 @@ dependencies {
   implementation(project(":shazamkit"))
   implementation(project(":artistvideo"))
   implementation(project(":applecanvas"))
-  implementation(project(":echomusiccanvas"))
+  implementation(project(":sonaricanvas"))
   implementation(project(":paxsenixlyrics"))
   implementation(project(":unison"))
 

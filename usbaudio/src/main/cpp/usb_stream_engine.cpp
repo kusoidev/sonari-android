@@ -11,7 +11,7 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-namespace echo::music::usbaudio {
+namespace sonari::music::usbaudio {
 
 UsbStreamEngine::UsbStreamEngine() = default;
 
@@ -415,4 +415,4 @@ void UsbStreamEngine::streamLoop() {
     }
 }
 
-} // namespace echo::music::usbaudio
+} // namespace sonari::music::usbaudio

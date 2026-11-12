@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.shazamkit"
+  namespace = "app.music.backend.sonari.shazamkit"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

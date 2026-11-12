@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.simpmusic"
+  namespace = "app.music.backend.sonari.simpmusic"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

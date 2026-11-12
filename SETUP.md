@@ -1,6 +1,6 @@
 # Setup Instructions
 
-This document provides instructions for setting up the Echo Music project for development.
+This document provides instructions for setting up the Sonari project for development.
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@ This document provides instructions for setting up the Echo Music project for de
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/EchoMusicApp/Echo-Music.git
-cd Echo-Music
+git clone https://github.com/SonariApp/Sonari.git
+cd Sonari
 ```
 
 ### 2. Configure Local Properties
@@ -74,7 +74,7 @@ KEY_PASSWORD=your_key_password
 
 Open the project in Android Studio or build from the command line.
 
-Echo Music builds as a **GMS** variant with Cast and Firebase support.
+Sonari builds as a **GMS** variant with Cast and Firebase support.
 
 ```bash
 # Debug build
@@ -88,7 +88,7 @@ Echo Music builds as a **GMS** variant with Cast and Firebase support.
 
 ### 6. Configure AI Translation (Optional)
 
-Echo Music supports AI-powered lyrics translation. You can configure this in **Settings -> AI Settings**.
+Sonari supports AI-powered lyrics translation. You can configure this in **Settings -> AI Settings**.
 
 #### Option A: Using OpenRouter (Default)
 
@@ -146,10 +146,6 @@ Try cleaning and rebuilding:
 ./gradlew clean
 ./gradlew build
 ```
-
-## Contributing
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 

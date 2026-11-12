@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.echo.lyrics"
+  namespace = "app.music.backend.sonari.lyrics"
   compileSdk = 37
   defaultConfig { minSdk = 26 }
   compileOptions {

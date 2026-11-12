@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.paxsenix"
+  namespace = "app.music.backend.sonari.paxsenix"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

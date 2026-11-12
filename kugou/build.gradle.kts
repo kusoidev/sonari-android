@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.kugou"
+  namespace = "app.music.backend.sonari.kugou"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

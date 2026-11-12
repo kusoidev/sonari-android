@@ -1,0 +1,97 @@
+package app.music.backend.sonari.viewmodels
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import app.music.backend.sonari.innertube.YouTube
+import app.music.backend.sonari.innertube.models.AlbumItem
+import app.music.backend.sonari.innertube.models.ArtistItem
+import app.music.backend.sonari.innertube.models.PlaylistItem
+import app.music.backend.sonari.innertube.models.filterYoutubeShorts
+import app.music.backend.sonari.innertube.utils.completed
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import app.music.backend.sonari.constants.HideYoutubeShortsKey
+import app.music.backend.sonari.ui.utils.resize
+import app.music.backend.sonari.utils.dataStore
+import app.music.backend.sonari.utils.get
+import app.music.backend.sonari.utils.reportException
+import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+
+enum class AccountContentType {
+  PLAYLISTS,
+  ALBUMS,
+  ARTISTS
+}
+
+@HiltViewModel
+class AccountViewModel
+@Inject
+constructor(
+  @ApplicationContext private val context: Context,
+) : ViewModel() {
+  val playlists = MutableStateFlow<List<PlaylistItem>?>(null)
+  val albums = MutableStateFlow<List<AlbumItem>?>(null)
+  val artists = MutableStateFlow<List<ArtistItem>?>(null)
+
+  val selectedContentType = MutableStateFlow(AccountContentType.PLAYLISTS)
+
+  private suspend fun loadPlaylists() {
+    val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+    YouTube.library("FEmusic_liked_playlists")
+      .completed()
+      .onSuccess {
+        playlists.value =
+          it.items
+            .filterIsInstance<PlaylistItem>()
+            .filterNot { it.id == "SE" }
+            .filterYoutubeShorts(hideYoutubeShorts)
+      }
+      .onFailure { reportException(it) }
+  }
+
+  init {
+    viewModelScope.launch {
+      loadPlaylists()
+      YouTube.library("FEmusic_liked_albums")
+        .completed()
+        .onSuccess { albums.value = it.items.filterIsInstance<AlbumItem>() }
+        .onFailure { reportException(it) }
+      YouTube.library("FEmusic_library_corpus_artists")
+        .completed()
+        .onSuccess {
+          artists.value =
+            it.items.filterIsInstance<ArtistItem>().map { artist ->
+              artist.copy(thumbnail = artist.thumbnail?.resize(1200, 1200))
+            }
+        }
+        .onFailure { reportException(it) }
+    }
+
+    viewModelScope.launch(Dispatchers.IO) {
+      context.dataStore.data
+        .map {
+          (try {
+            it[HideYoutubeShortsKey]
+          } catch (e: Exception) {
+            null
+          }) ?: false
+        }
+        .distinctUntilChanged()
+        .collect {
+          if (playlists.value != null) {
+            loadPlaylists()
+          }
+        }
+    }
+  }
+
+  fun setSelectedContentType(contentType: AccountContentType) {
+    selectedContentType.value = contentType
+  }
+}

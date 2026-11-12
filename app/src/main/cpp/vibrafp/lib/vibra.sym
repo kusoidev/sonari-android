@@ -1,6 +1,6 @@
 {
   global:
-    Java_com_echomusic_music_recognition_VibraSignature_*;
+    Java_app_music_backend_sonari_recognition_VibraSignature_*;
   local:
     *;
 };

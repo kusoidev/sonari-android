@@ -28,13 +28,13 @@
                 android:layout_height="20dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/icon"
-                android:contentDescription="@string/widget_echo_music" />
+                android:contentDescription="@string/widget_sonari_music" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="@string/widget_echo_music"
+                android:text="@string/widget_sonari_music"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:textColor="@color/widget_text_title" />

@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.innertube"
+  namespace = "app.music.backend.sonari.innertube"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

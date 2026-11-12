@@ -6,20 +6,20 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # WEB_REMIX Streaming - WebView JavaScript interfaces
--keepclassmembers class echo.music.iad1tya.utils.sabr.EjsNTransformSolver$SolverWebView {
+-keepclassmembers class app.music.backend.sonari.utils.sabr.EjsNTransformSolver$SolverWebView {
     @android.webkit.JavascriptInterface public *;
 }
--keepclassmembers class echo.music.iad1tya.utils.cipher.CipherWebView {
+-keepclassmembers class app.music.backend.sonari.utils.cipher.CipherWebView {
     @android.webkit.JavascriptInterface public *;
 }
--keepclassmembers class echo.music.iad1tya.utils.potoken.PoTokenWebView {
+-keepclassmembers class app.music.backend.sonari.utils.potoken.PoTokenWebView {
     @android.webkit.JavascriptInterface public *;
 }
 
 # Keep streaming utility classes
--keep class echo.music.iad1tya.utils.cipher.** { *; }
--keep class echo.music.iad1tya.utils.sabr.** { *; }
--keep class echo.music.iad1tya.utils.potoken.** { *; }
+-keep class app.music.backend.sonari.utils.cipher.** { *; }
+-keep class app.music.backend.sonari.utils.sabr.** { *; }
+-keep class app.music.backend.sonari.utils.potoken.** { *; }
 
 # Keep coroutine continuation for WebView callbacks
 -keepclassmembers class * {
@@ -117,11 +117,11 @@
 
 ## Queue Persistence Rules
 # Keep queue-related classes to prevent serialization issues in release builds
--keep class echo.music.iad1tya.models.PersistQueue { *; }
--keep class echo.music.iad1tya.models.PersistPlayerState { *; }
--keep class echo.music.iad1tya.models.QueueData { *; }
--keep class echo.music.iad1tya.models.QueueType { *; }
--keep class echo.music.iad1tya.playback.queues.** { *; }
+-keep class app.music.backend.sonari.models.PersistQueue { *; }
+-keep class app.music.backend.sonari.models.PersistPlayerState { *; }
+-keep class app.music.backend.sonari.models.QueueData { *; }
+-keep class app.music.backend.sonari.models.QueueType { *; }
+-keep class app.music.backend.sonari.playback.queues.** { *; }
 
 # Keep serialization methods for queue persistence
 -keepclassmembers class * implements java.io.Serializable {
@@ -135,7 +135,7 @@
 -keep interface com.yalantis.ucrop** { *; }
 
 ## Google Cast Rules
--keep class echo.music.iad1tya.cast.** { *; }
+-keep class app.music.backend.sonari.cast.** { *; }
 -keep class com.google.android.gms.cast.** { *; }
 -keep class androidx.mediarouter.** { *; }
 
@@ -143,8 +143,8 @@
 -dontwarn com.google.re2j.**
 
 # Vibra fingerprint library
--keep class echo.music.iad1tya.recognition.VibraSignature { *; }
--keepclassmembers class echo.music.iad1tya.recognition.VibraSignature {
+-keep class app.music.backend.sonari.recognition.VibraSignature { *; }
+-keepclassmembers class app.music.backend.sonari.recognition.VibraSignature {
     native <methods>;
 }
 
@@ -159,28 +159,28 @@
 -dontwarn io.ktor.**
 
 ## Shazam Models
--keep class com.music.shazamkit.models.** { *; }
--keepclassmembers class com.music.shazamkit.models.** {
+-keep class app.music.backend.sonari.shazamkit.models.** { *; }
+-keepclassmembers class app.music.backend.sonari.shazamkit.models.** {
     *;
 }
 
 ## Kotlinx Serialization
 -keepattributes *Annotation*
--keepclassmembers class com.music.shazamkit.models.** {
+-keepclassmembers class app.music.backend.sonari.shazamkit.models.** {
     *** Companion;
 }
--keepclasseswithmembers class com.music.shazamkit.models.** {
+-keepclasseswithmembers class app.music.backend.sonari.shazamkit.models.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 
 ## Listen Together Serialization
--keep class echo.music.iad1tya.listentogether.** { *; }
--keepclassmembers class echo.music.iad1tya.listentogether.** {
+-keep class app.music.backend.sonari.listentogether.** { *; }
+-keepclassmembers class app.music.backend.sonari.listentogether.** {
     *;
 }
--keepclassmembers class echo.music.iad1tya.listentogether.** {
+-keepclassmembers class app.music.backend.sonari.listentogether.** {
     *** Companion;
 }
--keepclasseswithmembers class echo.music.iad1tya.listentogether.** {
+-keepclasseswithmembers class app.music.backend.sonari.listentogether.** {
     kotlinx.serialization.KSerializer serializer(...);
 }

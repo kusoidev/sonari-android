@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.echo.playback"
+  namespace = "app.music.backend.sonari.playback"
   compileSdk = 37
   defaultConfig { minSdk = 26 }
   compileOptions {

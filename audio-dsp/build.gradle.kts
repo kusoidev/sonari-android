@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-  namespace = "echo.music.dsp.audio"
+  namespace = "app.music.backend.sonari.dsp.audio"
   compileSdk = 37
   defaultConfig {
     minSdk = 26

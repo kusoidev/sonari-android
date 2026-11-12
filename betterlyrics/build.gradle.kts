@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "com.music.betterlyrics"
+  namespace = "app.music.backend.sonari.betterlyrics"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }

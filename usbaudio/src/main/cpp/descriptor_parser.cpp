@@ -3,7 +3,7 @@
 #include <cstring>
 #include <set>
 
-namespace echo::music::usbaudio {
+namespace sonari::music::usbaudio {
 
 ParsedDacCapabilities DescriptorParser::parse(const uint8_t* data, size_t size) {
     ParsedDacCapabilities caps;
@@ -174,4 +174,4 @@ ParsedDacCapabilities DescriptorParser::parse(const uint8_t* data, size_t size) 
     return caps;
 }
 
-} // namespace echo::music::usbaudio
+} // namespace sonari::music::usbaudio
