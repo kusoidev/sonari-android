@@ -9,10 +9,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import app.music.backend.sonari.LocalPlayerConnection
-import app.music.backend.sonari.applecanvas.AppleMusicCanvasProvider
+import app.music.backend.sonari.canvas.apple.AppleMusicCanvasProvider
 import app.music.backend.sonari.canvas.CanvasArtwork
 import app.music.backend.sonari.canvas.TidalCanvasProvider
-import app.music.backend.sonari.sonaricanvas.sonariCanvasProvider
+import app.music.backend.sonari.canvas.sonari.sonariCanvasProvider
 import app.music.backend.sonari.ui.player.CanvasArtworkPlaybackCache
 import app.music.backend.sonari.ui.player.CanvasArtworkPlayer
 import app.music.backend.sonari.ui.player.normalizeCanvasArtistName

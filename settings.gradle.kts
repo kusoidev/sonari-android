@@ -21,17 +21,13 @@ include(
     ":App",
     ":Innertube",
     ":ShazamKit",
-    ":ArtistVideo",
     ":Canvas",
-    ":SonariCanvas",
-    ":AppleCanvas",
     ":Core",
     ":Lyrics",
     ":LyricsProviders",
     ":Playback",
     ":UsbAudio",
     ":Metadata",
-    ":DspCore",
     ":AudioDsp",
     ":Domain"
 )

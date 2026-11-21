@@ -28,7 +28,6 @@ kotlin { jvmToolchain(21) }
 dependencies {
   implementation(project(":Core"))
   api(project(":AudioDsp"))
-  api(project(":DspCore"))
   api(project(":UsbAudio"))
   "gmsImplementation"(libs.cast.framework)
   api(libs.media3)

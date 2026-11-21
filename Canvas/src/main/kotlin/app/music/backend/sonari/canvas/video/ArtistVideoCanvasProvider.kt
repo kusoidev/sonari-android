@@ -1,4 +1,4 @@
-package app.music.backend.sonari.artistvideo
+package app.music.backend.sonari.canvas.video
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body

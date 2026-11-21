@@ -14,7 +14,7 @@ import app.music.backend.sonari.innertube.models.filterYoutubeShorts
 import app.music.backend.sonari.innertube.pages.ArtistPage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import app.music.backend.sonari.artistvideo.ArtistVideoCanvasProvider
+import app.music.backend.sonari.canvas.video.ArtistVideoCanvasProvider
 import app.music.backend.sonari.constants.HideExplicitKey
 import app.music.backend.sonari.constants.HideVideoSongsKey
 import app.music.backend.sonari.constants.HideYoutubeShortsKey

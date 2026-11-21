@@ -140,26 +140,35 @@ Package/namespace: `app.music.backend.sonari` (app module). Application ID match
 
 ## Module map (multi-module Gradle project)
 
-Root `:app` depends on all of these library modules — each is a focused,
-mostly-independent feature/integration:
+Twelve modules. `:App` depends on all the library modules; the libraries only
+depend on each other where noted, so the graph stays acyclic.
 
-| Module | Purpose |
-|---|---|
-| `:app` | Main application — UI, ViewModels, MusicService, DB, DI, app-level orchestration |
-| `:core` | Shared models, constants, Room database, DataStore, and common utilities |
-| `:playback` | Pure ExoPlayer/Media3 logic — Queues, Equalizer, ChunkingDataSource, SleepTimer, BeatAnalyzer |
-| `:lyrics` | Lyrics orchestration — LyricsHelper, LyricsEntry, LyricsUtils, all provider impls, AI translation |
-| `:innertube` | YouTube Music InnerTube API client (the core music source) |
-| `:kugou`, `:lrclib`, `:betterlyrics`, `:youlyplus`, `:paxsenixlyrics`, `:simpmusic` | Individual lyrics source providers (each consumed by `:lyrics`) |
-| `:shazamkit` | Music recognition ("Sonari Find") |
-| `:canvas`, `:sonaricanvas`, `:applecanvas` | Canvas-style looping video backgrounds for tracks (different providers) |
-| `:artistvideo` | Artist video features |
-| `:unison` | Cross-cutting shared utility module (check source before editing) |
+| Module | Purpose | Depends on |
+|---|---|---|
+| `:App` | Main application — UI, ViewModels, MusicService, DB, DI, app-level orchestration | everything |
+| `:Core` | Shared models, constants, Room database, DataStore, repositories, common utilities | `:Innertube`, `:Metadata`, `:Domain` |
+| `:Domain` | Pure domain layer — models, repository interfaces, use cases | — |
+| `:Metadata` | Track metadata cleaning and version detection shared by the network modules | — |
+| `:Playback` | Media3 logic — queues, `ChunkingDataSource`, `SleepTimer`, audio sink selection, beat analysis | `:Core`, `:AudioDsp`, `:UsbAudio` |
+| `:AudioDsp` | Audio processors, `DspController`, and the biquad / parametric EQ core they run on | — |
+| `:UsbAudio` | USB DAC output: descriptors, bit-perfect PCM, volume modes | — |
+| `:Lyrics` | Lyrics orchestration — helpers, entries, provider wrappers, AI translation | `:Core`, `:Innertube`, `:LyricsProviders` |
+| `:LyricsProviders` | Every external lyrics source, one package each (LrcLib, Kugou, BetterLyrics, SimpMusic, Paxsenix, YouLyPlus) | `:Metadata` |
+| `:Innertube` | YouTube Music InnerTube API client (the core music source) | `:Metadata` |
+| `:Canvas` | Animated artwork backgrounds and video: Tidal, Apple Music and Sonari providers plus the artist video surface | — |
+| `:ShazamKit` | Music recognition ("Sonari Find") | — |
 
-When adding a new external integration (a new lyrics source, a new canvas
-provider, etc.), the existing pattern is: **new Gradle module**, register it
-in `settings.gradle.kts`, add it as an `implementation(project(":name"))` in
-`app/build.gradle.kts`, wire it up via Hilt in `di/`.
+Source packages keep their own names, so a module can hold more than one
+package group: `:Canvas` owns `canvas/` with `apple/`, `sonari/` and `video/`
+under it; `:AudioDsp` owns `dsp/audio`, `dsp/controller`, `dsp/core`,
+`dsp/data` and `dsp/di`.
+
+When adding a new external integration, prefer growing the module that already
+owns that concern — a new lyrics source is a package inside `:LyricsProviders`,
+a new artwork/video provider is a package inside `:Canvas` — and only create a
+new Gradle module for something genuinely separate: register it in
+`settings.gradle.kts`, add it as `implementation(project(":Name"))` in
+`App/build.gradle.kts`, and wire it up via Hilt in `di/`.
 
 ## App module internal structure
 

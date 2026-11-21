@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-  namespace = "app.music.backend.sonari.dsp.audio"
+  namespace = "app.music.backend.sonari.dsp"
   compileSdk = 37
   defaultConfig {
     minSdk = 26
@@ -21,8 +21,8 @@ kotlin {
   jvmToolchain(21)
 }
 
+// Audio processors, the DSP controller, and the biquad/parametric EQ core they are built on.
 dependencies {
-  api(project(":DspCore"))
   api(libs.media3)
   implementation(libs.timber)
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")

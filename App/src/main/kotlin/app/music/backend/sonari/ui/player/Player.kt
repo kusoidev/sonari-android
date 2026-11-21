@@ -183,7 +183,7 @@ import app.music.backend.sonari.LocalDownloadUtil
 import app.music.backend.sonari.LocalListenTogetherManager
 import app.music.backend.sonari.LocalPlayerConnection
 import app.music.backend.sonari.R
-import app.music.backend.sonari.applecanvas.AppleMusicCanvasProvider
+import app.music.backend.sonari.canvas.apple.AppleMusicCanvasProvider
 import app.music.backend.sonari.canvas.CanvasArtwork
 import app.music.backend.sonari.canvas.TidalCanvasProvider
 import app.music.backend.sonari.constants.AudioQuality
@@ -217,7 +217,7 @@ import app.music.backend.sonari.playback.audio.bluetooth.BluetoothAudioTracker
 import app.music.backend.sonari.playback.audio.bluetooth.BluetoothTelemetry
 import app.music.backend.sonari.ui.component.BitPerfectBadge
 import app.music.backend.sonari.usbaudio.DacDeviceState
-import app.music.backend.sonari.sonaricanvas.sonariCanvasProvider
+import app.music.backend.sonari.canvas.sonari.sonariCanvasProvider
 import app.music.backend.sonari.extensions.SwipeGesture
 import app.music.backend.sonari.extensions.togglePlayPause
 import app.music.backend.sonari.models.MediaMetadata

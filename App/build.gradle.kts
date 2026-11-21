@@ -245,7 +245,6 @@ dependencies {
   implementation(project(":Core"))
   implementation(project(":Playback"))
   implementation(project(":AudioDsp"))
-  implementation(project(":DspCore"))
   implementation(project(":UsbAudio"))
 
   // Firebase - GMS flavor only (excluded from F-Droid / FOSS builds)
@@ -325,9 +324,6 @@ dependencies {
   implementation(project(":LyricsProviders"))
   implementation(project(":Canvas"))
   implementation(project(":ShazamKit"))
-  implementation(project(":ArtistVideo"))
-  implementation(project(":AppleCanvas"))
-  implementation(project(":SonariCanvas"))
 
   implementation(libs.ktor.client.core)
   implementation(libs.retrofit)

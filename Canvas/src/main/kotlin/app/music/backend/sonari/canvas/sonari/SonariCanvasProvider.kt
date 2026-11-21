@@ -1,4 +1,4 @@
-package app.music.backend.sonari.sonaricanvas
+package app.music.backend.sonari.canvas.sonari
 
 import app.music.backend.sonari.canvas.CanvasArtwork
 import io.ktor.client.HttpClient

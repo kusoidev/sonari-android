@@ -98,7 +98,7 @@ import app.music.backend.sonari.LocalListenTogetherManager
 import app.music.backend.sonari.LocalPlayerAwareWindowInsets
 import app.music.backend.sonari.LocalPlayerConnection
 import app.music.backend.sonari.R
-import app.music.backend.sonari.artistvideo.ArtistVideo
+import app.music.backend.sonari.canvas.video.ArtistVideo
 import app.music.backend.sonari.canvas.AppleMusicArtistBackgroundProvider
 import app.music.backend.sonari.constants.AppBarHeight
 import app.music.backend.sonari.constants.BlockedArtistsKey

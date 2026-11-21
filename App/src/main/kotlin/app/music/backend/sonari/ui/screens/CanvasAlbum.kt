@@ -6,10 +6,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import app.music.backend.sonari.applecanvas.AppleMusicCanvasProvider
+import app.music.backend.sonari.canvas.apple.AppleMusicCanvasProvider
 import app.music.backend.sonari.canvas.CanvasArtwork
 import app.music.backend.sonari.canvas.TidalCanvasProvider
-import app.music.backend.sonari.sonaricanvas.sonariCanvasProvider
+import app.music.backend.sonari.canvas.sonari.sonariCanvasProvider
 import app.music.backend.sonari.ui.player.CanvasArtworkPlaybackCache
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers

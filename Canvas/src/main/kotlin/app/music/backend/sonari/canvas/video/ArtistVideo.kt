@@ -1,4 +1,4 @@
-package app.music.backend.sonari.artistvideo
+package app.music.backend.sonari.canvas.video
 
 import android.view.TextureView
 import android.view.ViewGroup

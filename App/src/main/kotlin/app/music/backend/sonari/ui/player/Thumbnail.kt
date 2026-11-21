@@ -75,7 +75,7 @@ import coil3.request.ImageRequest
 import app.music.backend.sonari.LocalListenTogetherManager
 import app.music.backend.sonari.LocalPlayerConnection
 import app.music.backend.sonari.R
-import app.music.backend.sonari.applecanvas.AppleMusicCanvasProvider
+import app.music.backend.sonari.canvas.apple.AppleMusicCanvasProvider
 import app.music.backend.sonari.canvas.CanvasArtwork
 import app.music.backend.sonari.canvas.TidalCanvasProvider
 import app.music.backend.sonari.constants.CanvasThumbnailAnimationKey
@@ -88,7 +88,7 @@ import app.music.backend.sonari.constants.RotatingThumbnailKey
 import app.music.backend.sonari.constants.SwipeThumbnailKey
 import app.music.backend.sonari.constants.ThumbnailCornerRadius
 import app.music.backend.sonari.constants.ThumbnailCornerRadiusKey
-import app.music.backend.sonari.sonaricanvas.sonariCanvasProvider
+import app.music.backend.sonari.canvas.sonari.sonariCanvasProvider
 import app.music.backend.sonari.extensions.metadata
 import app.music.backend.sonari.listentogether.RoomRole
 import app.music.backend.sonari.ui.utils.resize
