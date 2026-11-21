@@ -1,129 +1,71 @@
 # Sonari
 
-An Android music app built with Kotlin and Jetpack Compose: local playback, YouTube streaming,
-synchronised lyrics, and a hand-built Now Playing screen.
+An Android music player for people who actually listen: local files and YouTube, gapless playback,
+and lyrics that move with the song.
 
-This repository is the full Android project, including playback, library, lyrics and related modules.
+## Features
 
-## Credits
+- **Play from anywhere.** Your own library, folders on the device, or stream from YouTube.
+- **Lyrics worth watching.** Word-by-word sweep, a letter-by-letter bloom style, per-line ripple as
+  the song moves, and synced providers (LrcLib, KuGou, BetterLyrics, YouLyPlus, Paxsenix, Unison,
+  SimpMusic).
+- **A Now Playing screen built by hand.** Album art that follows the beat, a focus blur that pulls the
+  eye to the line being sung, and colour taken from the cover.
+- **Shuffle that feels like a wheel.** Spin it and it lands where you let go.
+- **Downloads.** Keep tracks offline, including while they stream.
+- **Built to last a session.** DSP, playback and background work tuned for hours, not minutes.
 
-Sonari is a **fork of [Echo Music](https://github.com/EchoMusicApp/Echo-Music)**, not an original
-codebase. Most of what is in this repository is their work, licensed GPL-3.0, and it stays that way.
-Two projects in particular made Sonari possible:
+## Build
 
-- **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** — the base of the app. Playback,
-  streaming, library, downloads, lyrics plumbing and the module layout all come from here.
-- **[Mochy Music](https://github.com/realidkroo/Mochy-Music)** — the project Echo itself is built on,
-  and the inspiration and reference for the boot animation and the lyric animations.
+**Requirements:** JDK 21, Android SDK Platform 36, NDK `28.2.13676358`, Android Studio (or the SDK
+command-line tools).
 
-Lyrics providers used through Echo: **[LrcLib](https://lrclib.net)**, KuGou, BetterLyrics, YouLyPlus,
-Paxsenix, Unison and **[SimpMusic](https://github.com/maxrave-dev/SimpMusic)**.
-
-## What Sonari changes
-
-- A rebuilt Now Playing screen and a shuffle wheel for the library.
-- New lyric renderers: a word-sweep line renderer and a letter-by-letter bloom style, selectable in
-  Appearance settings, with ripple follow-through between lines.
-- Streamlined settings and navigation: removed modules and screens that were not used, in favour of a
-  smaller, faster app.
-- Audio and battery work: playback, DSP and background behaviour tuned for long sessions.
-
-The exact list of changes is in the git history, module by module.
-
-## Requirements
-
-- Android Studio (latest stable recommended) or command-line Android SDK tools
-- JDK 21
-- Android SDK with:
-  - Android SDK Platform 36 (target/compile per project config)
-  - Build tools / NDK `28.2.13676358` (as configured in `App/build.gradle.kts`)
-- Git
-
-## Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/kusoidev/sonari-android.git
-   cd sonari-android
-   ```
-
-2. **Configure local SDK path**
-   ```bash
-   cp local.properties.template local.properties
-   ```
-   Edit `local.properties` and set your Android SDK location:
-   ```properties
-   sdk.dir=/path/to/your/android/sdk
-   ```
-   Examples:
-   - macOS: `/Users/<you>/Library/Android/sdk`
-   - Linux: `/home/<you>/Android/sdk`
-   - Windows: `C:\\Users\\<you>\\AppData\\Local\\Android\\sdk`
-
-3. **(Optional) Gradle/signing properties**
-   If you need custom build properties, copy the template and adjust as needed:
-   ```bash
-   cp gradle.properties.template gradle.properties
-   ```
-   Do **not** commit real signing credentials.
-
-4. **(Optional) Firebase / Google services**
-   The project can be built without Firebase configuration. If you want Firebase features, add your
-   own `App/google-services.json` locally (it is gitignored). Release builds and some CI flows may
-   expect signing/Firebase secrets when configured.
-
-## Build & Run
-
-### From Android Studio
-1. Open the project folder in Android Studio.
-2. Let Gradle sync complete.
-3. Select a device/emulator and run the `App` configuration.
-
-### From the command line
-
-Debug build (FOSS variant, no Google Play Services/Cast dependency path used by default flavoring):
 ```bash
-./gradlew assembleUniversalFossDebug
+git clone https://github.com/kusoidev/sonari-android.git
+cd sonari-android
+cp local.properties.template local.properties   # then set sdk.dir
 ```
 
-Debug build (GMS variant):
+From Android Studio, open the folder, let Gradle sync, and run the `App` configuration. From the
+command line:
+
 ```bash
-./gradlew assembleUniversalGmsDebug
+./gradlew assembleUniversalGmsDebug      # with Google Play services
+./gradlew assembleUniversalFossDebug     # without
+./gradlew assembleUniversalGmsRelease    # signed release
 ```
 
-Release build (requires proper signing configuration):
-```bash
-./gradlew assembleUniversalGmsRelease
-```
+APKs land in `App/build/outputs/apk/`. Unit tests:
 
-On Windows, use `gradlew.bat` instead of `./gradlew`.
-
-APKs are generated under:
-```
-App/build/outputs/apk/
-```
-
-## Tests
-
-Run unit tests (examples):
 ```bash
 ./gradlew :Core:testDebugUnitTest :Lyrics:testDebugUnitTest :App:testUniversalGmsDebugUnitTest
 ```
 
-## Project notes
+On Windows use `gradlew.bat`.
 
-- **App ID:** `com.kusoi.sonari` (debug builds use the `.debug` suffix)
-- **Version:** see `App/build.gradle.kts` (`versionCode` / `versionName`)
-- **Min SDK:** 26
-- **Toolchain:** JDK 21, Gradle wrapper included
+## Project
 
-## Local files (not committed)
+| | |
+|---|---|
+| App ID | `com.kusoi.sonari` |
+| Min SDK | 26 |
+| Version | `App/build.gradle.kts` (`versionName` / `versionCode`) |
+| Language | Kotlin, Jetpack Compose |
+| Toolchain | JDK 21, Gradle wrapper included |
 
-These are ignored by git and should remain local:
-- `local.properties` (SDK path)
-- `App/google-services.json` / signing keys (`*.keystore`, `*.jks`)
-- build outputs (`build/`, `.gradle/`, etc.)
-- any local debug dumps or secrets
+## Credits
+
+Sonari is a fork of **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)**, not an original
+codebase. Most of what is here is their work, under GPL-3.0, and it stays that way. Two projects in
+particular made Sonari possible:
+
+- **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** — the base of the app: playback,
+  streaming, library, downloads, lyrics plumbing and the module layout.
+- **[Mochy Music](https://github.com/realidkroo/Mochy-Music)** — the project Echo itself is built on,
+  and the reference and inspiration for the boot animation and the lyric animations.
+
+Lyrics come through providers carried over from Echo: **[LrcLib](https://lrclib.net)**, KuGou,
+BetterLyrics, YouLyPlus, Paxsenix, Unison and **[SimpMusic](https://github.com/maxrave-dev/SimpMusic)**.
 
 ## License
 
