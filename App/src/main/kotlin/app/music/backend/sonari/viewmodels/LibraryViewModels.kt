@@ -126,7 +126,9 @@ constructor(
         val (hideExplicit, hideVideoSongs) = hideConfig
         when (filter) {
           SongFilter.LIBRARY ->
-            database.songs(sortType, descending).map {
+            // The Library tab is the whole library: every song the app knows about, the same set
+            // the "All" playlist holds, not just the rows marked as being in the library.
+            database.allSongs(sortType, descending).map {
               it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs)
             }
           SongFilter.LIKED ->
