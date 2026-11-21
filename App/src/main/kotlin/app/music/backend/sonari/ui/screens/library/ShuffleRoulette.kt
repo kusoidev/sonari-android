@@ -1,8 +1,10 @@
 package app.music.backend.sonari.ui.screens.library
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
@@ -34,18 +37,17 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.music.backend.sonari.R
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 
 /** Top speed of the wheel in pixels per second — fast enough that the rows smear into a blur. */
 private const val SPIN_SPEED = 16_000f
-
-/** How long the wheel races for before it starts slowing down onto the winner. */
-private const val SPIN_MS = 950L
 
 /** How many rows above the winner the wheel begins its final approach. */
 private const val RUN_UP_ROWS = 8
@@ -55,6 +57,9 @@ private const val RUN_UP_ROWS = 8
  * the songs screen watches [tick] and spins its own list: the rows race past the needle at the
  * centre of the screen with a motion blur, slow down, and land on the winner, which is then played
  * first with the rest of the library shuffled in behind it.
+ *
+ * Only song rows are ever scrolled. The wheels never goes back to the top of the list, and when it
+ * runs out at the bottom it wraps to the first song, so nothing above the songs moves.
  */
 class ShuffleRouletteState {
   var tick: Int by mutableIntStateOf(0)
@@ -63,10 +68,7 @@ class ShuffleRouletteState {
   var running: Boolean by mutableStateOf(false)
     private set
 
-  /**
-   * The row the wheel is aiming at. Reported up front so the list can attach a position probe to
-   * that one row, which is what lets the wheel stop dead centre whatever the row heights are.
-   */
+  /** The row the wheel is aiming at; the list attaches a position probe to that one row. */
   var targetSongId: String? by mutableStateOf(null)
     private set
 
@@ -82,26 +84,37 @@ class ShuffleRouletteState {
   var speed: Float by mutableFloatStateOf(0f)
     private set
 
+  /**
+   * How far the brackets have slid from the middle to sit on a winner the list could not scroll to
+   * the centre of the screen — one too close to the top or the bottom. Zero otherwise.
+   */
+  var needleShiftPx: Float by mutableFloatStateOf(0f)
+    private set
+
   /** Called by the shuffle FAB. Ignored while a spin is already running. */
   fun begin() {
     if (!running) tick++
   }
 
   /**
-   * Spins [listState] and stops on the row at [winnerRow] — its index among the rows, not counting
-   * the [headerRows] header items at the top of the list.
+   * Spins [listState] over [rowCount] songs and lands on the song at [winnerRow].
+   *
+   * The spin is one eased scroll from wherever the list is now: it starts at [SPIN_SPEED] and
+   * decelerates over enough rows to read as a wheel. When the list runs out at the bottom it wraps
+   * to its first song — the only place it ever returns to — and the final approach brings the
+   * winner dead centre on the needle using that row's measured position.
    */
   internal suspend fun run(
     listState: LazyListState,
     probe: ShuffleNeedleProbe,
     rowCount: Int,
     winnerRow: Int,
-    headerRows: Int,
     winnerId: String,
   ) {
     if (running || rowCount <= 0) return
     running = true
     targetSongId = winnerId
+    needleShiftPx = 0f
     probe.reset()
     val frost = Animatable(0f)
 
@@ -109,50 +122,65 @@ class ShuffleRouletteState {
       // Frost the top and bottom in as the wheel starts.
       frost.animateTo(1f, tween(280)) { blurProgress = value }
 
-      // The wheel itself: race the rows past the needle, wrapping round to the top whenever the
-      // list runs out so a small library spins just as hard as a big one.
-      var lastFrame = withFrameNanos { it }
-      val stopAt = lastFrame + SPIN_MS * 1_000_000L
-      var velocity = 0f
+      val rowPx = averageRowPx(listState)
+      val here = listState.firstVisibleItemIndex.coerceIn(0, rowCount - 1)
+      val runUp = (winnerRow - RUN_UP_ROWS).coerceAtLeast(0)
+      val forwardRows = (runUp - here + rowCount) % rowCount
+      // Extra laps so a short library still turns the wheel several times, while a long one only
+      // goes round when it has to.
+      val lapRows = SPIN_SPEED * 2.4f / 3f / rowPx
+      var laps = ((lapRows - forwardRows) / rowCount).roundToInt().coerceAtLeast(0)
+      if (forwardRows < 4 && laps == 0) laps = 1
+      val totalPx = (forwardRows + laps * rowCount) * rowPx
+      // An ease-out cubic starts at three times its average speed, so this length of spin sets off
+      // at SPIN_SPEED. Clamped so the wheel neither blinks past on a short list nor crawls on a long.
+      val durationMs = (3f * totalPx / SPIN_SPEED * 1000f).coerceIn(1500f, 3000f)
+
+      val canScroll =
+        listState.layoutInfo.totalItemsCount > listState.layoutInfo.visibleItemsInfo.size
+      var travelled = 0f
+      val start = withFrameNanos { it }
+      var previous = start
       while (true) {
         val now = withFrameNanos { it }
-        val elapsed = ((now - lastFrame) / 1_000_000_000f).coerceIn(0f, 0.05f)
-        lastFrame = now
-        velocity = minOf(velocity + SPIN_SPEED * 2.4f * elapsed, SPIN_SPEED)
-        speed = velocity / SPIN_SPEED
-        listState.scrollBy(velocity * elapsed)
-        if (!listState.canScrollForward) listState.scrollToItem(0)
-        if (now >= stopAt) break
+        val t = ((now - start) / 1_000_000f / durationMs).coerceIn(0f, 1f)
+        val inverse = 1f - t
+        val eased = 1f - inverse * inverse * inverse
+        val delta = totalPx * eased - travelled
+        val seconds = ((now - previous) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+        previous = now
+        val consumed = listState.scrollBy(delta)
+        travelled += delta
+        // The list ran out at the bottom: wrap to its first song and carry on with the wheel.
+        if (canScroll && delta > 1f && abs(consumed) < delta * 0.5f) listState.scrollToItem(0)
+        speed = (abs(delta) / seconds / SPIN_SPEED).coerceIn(0f, 1f)
+        if (t >= 1f) break
       }
 
-      // Line the winner up for the final approach: back to the top, then a sweep down to just
-      // above it. Both jumps happen while the rows are still smeared past recognition.
-      probe.reset()
-      listState.scrollToItem(0)
-      listState.animateScrollToItem((winnerRow - RUN_UP_ROWS).coerceAtLeast(0) + headerRows)
-
-      // Final approach: decelerate onto the needle using that row's measured position, so the
-      // wheel stops exactly on it however tall the rows happen to be.
-      var approach = SPIN_SPEED * 0.45f
-      var frames = 0
+      // Final approach: decelerate onto the winner using its measured position, so the wheel stops
+      // exactly on it whatever the row heights are.
+      var approach = SPIN_SPEED * 0.35f
       var stuck = 0
-      var previous = withFrameNanos { it }
-      while (frames++ < 240) {
+      var frames = 0
+      var previousFrame = withFrameNanos { it }
+      while (frames++ < 300) {
         val now = withFrameNanos { it }
-        val elapsed = ((now - previous) / 1_000_000_000f).coerceIn(0f, 0.05f)
-        previous = now
-        val error = probe.errorPx()
+        val seconds = ((now - previousFrame) / 1_000_000_000f).coerceIn(0f, 0.05f)
+        previousFrame = now
+        val error = visibleError(listState, probe, winnerId)
         if (error != null && abs(error) <= 0.75f) break
+        val maxStep = approach * seconds
         val step =
           if (error == null) {
-            // The winner is not on screen yet: keep sweeping towards it.
-            approach * elapsed
+            // The winner is not on screen yet: keep the wheel turning towards it.
+            maxStep
           } else {
-            (error * 0.22f).coerceIn(-approach * elapsed, approach * elapsed)
+            (error * 0.2f).coerceIn(-maxStep, maxStep)
           }
         val consumed = listState.scrollBy(step)
+        if (error == null && abs(consumed) < step * 0.5f) listState.scrollToItem(0)
         if (abs(step) > 1.5f && abs(consumed) < 0.5f) {
-          // The list has nothing left to give: the winner is as close as it can get.
+          // Nothing left to scroll: the winner is as close to the needle as the list can get.
           if (++stuck > 2) break
         } else {
           stuck = 0
@@ -162,6 +190,12 @@ class ShuffleRouletteState {
       }
 
       speed = 0f
+      // A winner the list could not bring to the middle of the screen: the brackets slide onto it.
+      val resting = visibleError(listState, probe, winnerId)
+      if (resting != null && abs(resting) > 0.75f) {
+        val limit = listState.layoutInfo.viewportSize.height / 2f - 60f
+        needleShiftPx = resting.coerceIn(-limit, limit)
+      }
       winnerSongId = winnerId
       delay(420) // let the winner pulse read before the frost lifts
 
@@ -170,10 +204,30 @@ class ShuffleRouletteState {
       running = false
       speed = 0f
       blurProgress = 0f
+      needleShiftPx = 0f
       targetSongId = null
       winnerSongId = null
     }
   }
+}
+
+/** The average height of the rows on screen, in pixels, used to size the spin. */
+private fun averageRowPx(listState: LazyListState): Float {
+  val sizes = listState.layoutInfo.visibleItemsInfo.map { it.size.toFloat() }
+  return if (sizes.isEmpty()) 200f else sizes.average().toFloat().coerceAtLeast(1f)
+}
+
+/**
+ * How far the winning row still has to travel up to sit under the needle, in pixels. Null while the
+ * row is not on screen, since a row that has scrolled away has no position worth aiming at.
+ */
+private fun visibleError(
+  listState: LazyListState,
+  probe: ShuffleNeedleProbe,
+  winnerId: String,
+): Float? {
+  if (listState.layoutInfo.visibleItemsInfo.none { it.key == winnerId }) return null
+  return probe.errorPx()
 }
 
 /**
@@ -232,8 +286,9 @@ fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier
 }
 
 /**
- * The "> song <" brackets the wheel lands between. They rattle like a real spinning wheel being hit
- * by the rows — hard while it is at speed, settling to still as it stops.
+ * The "> song <" brackets the wheel lands between. Each row that flies past knocks them outward and
+ * they spring back, the two trading the blows half a beat apart. When the wheel settles they slide
+ * onto the winning row if it could not be brought to the middle of the screen.
  */
 @Composable
 fun ShuffleNeedleOverlay(
@@ -246,8 +301,14 @@ fun ShuffleNeedleOverlay(
     rememberInfiniteTransition(label = "shuffleNeedle").animateFloat(
       initialValue = 0f,
       targetValue = 1f,
-      animationSpec = infiniteRepeatable(tween(durationMillis = 110, easing = LinearEasing)),
+      animationSpec = infiniteRepeatable(tween(durationMillis = 130, easing = LinearEasing)),
       label = "shuffleNeedleJiggle",
+    )
+  val shift by
+    animateFloatAsState(
+      targetValue = state.needleShiftPx,
+      animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+      label = "shuffleNeedleShift",
     )
   Row(
     verticalAlignment = Alignment.CenterVertically,
@@ -256,19 +317,23 @@ fun ShuffleNeedleOverlay(
       modifier
         .fillMaxWidth()
         .padding(horizontal = 8.dp)
+        .offset { IntOffset(0, shift.roundToInt()) }
         .onGloballyPositioned { coords ->
           probe.needleCenterY = coords.positionInRoot().y + coords.size.height / 2f
         }
         .graphicsLayer { alpha = state.blurProgress },
   ) {
     NeedleArrow(speed = state.speed, phase = jiggle, pointsRight = true)
-    NeedleArrow(speed = state.speed, phase = jiggle + 0.37f, pointsRight = false)
+    NeedleArrow(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
   }
 }
 
 @Composable
 private fun NeedleArrow(speed: Float, phase: Float, pointsRight: Boolean) {
-  val wobble = sin(phase * 2f * PI.toFloat())
+  // Sine cubed keeps the sign but sharpens the peak, so a hit reads as a knock rather than a buzz.
+  val swing = sin(phase * 2f * PI.toFloat())
+  val hit = swing * swing * swing
+  val outward = if (pointsRight) -1f else 1f
   Icon(
     painter =
       painterResource(
@@ -278,12 +343,12 @@ private fun NeedleArrow(speed: Float, phase: Float, pointsRight: Boolean) {
     tint = MaterialTheme.colorScheme.primary,
     modifier =
       Modifier.size(30.dp).graphicsLayer {
-        rotationZ = wobble * 11f * speed
-        translationX = wobble * 4.dp.toPx() * speed
-        translationY = sin(phase * 4f * PI.toFloat()) * 3.dp.toPx() * speed
-        val punch = 1f + 0.1f * speed * abs(wobble)
-        scaleX = punch
-        scaleY = punch
+        rotationZ = hit * 9f * speed
+        translationX = outward * hit * 7.dp.toPx() * speed
+        translationY = sin(phase * 6f * PI.toFloat()) * 2.dp.toPx() * speed
+        val stretch = 1f + 0.13f * abs(hit) * speed
+        scaleX = stretch
+        scaleY = 2f - stretch
       },
   )
 }
