@@ -108,6 +108,12 @@ On Windows use `gradlew.bat`. The project is Kotlin with Jetpack Compose, app ID
 
 ---
 
+### Versioning
+
+Versions follow semver: **MAJOR** for a change that breaks compatibility, **MINOR** for new features
+that keep it, **PATCH** for backwards-compatible fixes. `versionName` and `versionCode` both live in
+`App/build.gradle.kts`, and the code goes up by one with every release.
+
 ## Credits
 
 Sonari is a fork of **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** and is not an original codebase. Most of what is here is their work, under GPL-3.0, and it stays that way.
