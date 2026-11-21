@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,10 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -48,6 +53,8 @@ import app.music.backend.sonari.ui.component.SongListItem
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -311,7 +318,7 @@ fun BoxScope.ShuffleNeedleOverlay(
     rememberInfiniteTransition(label = "shuffleNeedle").animateFloat(
       initialValue = 0f,
       targetValue = 1f,
-      animationSpec = infiniteRepeatable(tween(durationMillis = 130, easing = LinearEasing)),
+      animationSpec = infiniteRepeatable(tween(durationMillis = 260, easing = LinearEasing)),
       label = "shuffleNeedleJiggle",
     )
   val shown by
@@ -337,27 +344,38 @@ fun BoxScope.ShuffleNeedleOverlay(
 
 @Composable
 private fun NeedleArrow(speed: Float, phase: Float, pointsRight: Boolean) {
-  // Sine cubed keeps the sign but sharpens the peak, so a hit reads as a knock rather than a buzz.
-  val swing = sin(phase * 2f * PI.toFloat())
-  val hit = swing * swing * swing
+  // A struck bar rather than a buzz: one knock as a row goes by, then a damped settle that dies
+  // away on its own. The harder the wheel turns, the harder the knock.
+  val ring = exp(-3.2f * phase) * cos(5f * PI.toFloat() * phase)
+  val hit = (ring * speed).coerceIn(-1f, 1f)
   val outward = if (pointsRight) -1f else 1f
-  Icon(
-    painter =
-      painterResource(
-        if (pointsRight) R.drawable.ic_nav_chevron_right else R.drawable.ic_nav_chevron_left
-      ),
-    contentDescription = null,
-    tint = MaterialTheme.colorScheme.primary,
+  val tint = MaterialTheme.colorScheme.primary
+  val mirror = if (pointsRight) 1f else -1f
+
+  Canvas(
     modifier =
-      Modifier.size(34.dp).graphicsLayer {
-        rotationZ = hit * 11f * speed
-        translationX = outward * hit * 9.dp.toPx() * speed
-        translationY = sin(phase * 6f * PI.toFloat()) * 2.5f.dp.toPx() * speed
-        val stretch = 1f + 0.16f * abs(hit) * speed
-        scaleX = stretch
-        scaleY = 2f - stretch
+      Modifier.size(26.dp).graphicsLayer {
+        rotationZ = hit * 5f
+        translationX = outward * hit * 7.dp.toPx()
+        translationY = hit * 2.dp.toPx()
+        scaleX = mirror * (1f + 0.10f * abs(hit))
+        scaleY = 1f - 0.06f * abs(hit)
       },
-  )
+  ) {
+    val stroke = size.minDimension * 0.14f
+    val inset = size.minDimension * 0.2f
+    val chevron =
+      Path().apply {
+        moveTo(inset, size.height * 0.1f)
+        lineTo(size.width - inset, size.height * 0.5f)
+        lineTo(inset, size.height * 0.9f)
+      }
+    drawPath(
+      path = chevron,
+      color = tint,
+      style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+  }
 }
 
 /** A burst of confetti out of the middle of the wheel once it has stopped on a song. */

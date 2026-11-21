@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
@@ -669,10 +670,13 @@ fun Lyrics(
       val itemAnchor = if (compact) itemInfo.offset else itemInfo.offset + itemInfo.size / 2
       val offset = itemAnchor - anchor
       if (kotlin.math.abs(offset) > 10) {
+        // One eased slide of a known length (the model Mochy Music uses): it starts smoothly,
+        // keeps a constant sense of travel and settles exactly on the line, where a very soft
+        // spring hangs in the air and reads as a drift rather than a move.
         lazyListState.animateScrollBy(
           value = offset.toFloat(),
           animationSpec =
-            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessVeryLow)
+            tween(durationMillis = 950, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))
         )
       }
     } else {
@@ -1194,28 +1198,30 @@ fun Lyrics(
             val isActiveByIndex = index == displayedCurrentLineIndex
             val isActiveByTime = isLineAtSameTime && displayedCurrentLineIndex >= 0
 
+            val lineDistance =
+              kotlin.math.abs(
+                index -
+                  (if (displayedCurrentLineIndex >= 0) displayedCurrentLineIndex
+                  else currentLineIndex)
+              )
             val alpha by
               animateFloatAsState(
                 targetValue =
                   when {
                     !isSynced || (isSelectionModeActive && isSelected) -> 1f
                     isActiveByIndex || isActiveByTime -> 1f
-                    else -> 0.5f
+                    lineDistance == 1 -> 0.65f
+                    lineDistance == 2 -> 0.45f
+                    else -> 0.35f
                   },
-                animationSpec =
-                  spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessLow
-                  )
+                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+                label = "standard_line_alpha"
               )
             val scale by
               animateFloatAsState(
                 targetValue = if (isActiveByIndex || isActiveByTime) 1.05f else 1f,
-                animationSpec =
-                  spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessLow
-                  )
+                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                label = "standard_line_scale"
               )
 
             val targetBlur =
@@ -1246,11 +1252,7 @@ fun Lyrics(
             val blurRadius by
               animateFloatAsState(
                 targetValue = targetBlur,
-                animationSpec =
-                  spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessLow
-                  ),
+                animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
                 label = "standard_blur"
               )
 
@@ -1343,7 +1345,7 @@ fun Lyrics(
                       when {
                         !isActiveLine -> 0.7f
                         hasWordPassed -> 1f
-                        isWordActive -> 0.5f + (0.5f * transitionProgress)
+                        isWordActive -> 0.55f + (0.45f * transitionProgress)
                         else -> 0.35f
                       }
 
@@ -1352,8 +1354,7 @@ fun Lyrics(
                       when {
                         !isActiveLine -> FontWeight.Bold
                         hasWordPassed -> FontWeight.Bold
-                        isWordActive -> FontWeight.ExtraBold
-                        else -> FontWeight.Medium
+                        else -> FontWeight.Bold
                       }
 
                     withStyle(style = SpanStyle(color = wordColor, fontWeight = wordWeight)) {
@@ -1394,7 +1395,7 @@ fun Lyrics(
                       when {
                         !isActiveLine -> 0.55f
                         hasWordPassed -> 1f
-                        isWordActive -> 0.4f + (0.6f * fadeProgress)
+                        isWordActive -> 0.5f + (0.5f * fadeProgress)
                         else -> 0.4f
                       }
                     val wordColor = expressiveAccent.copy(alpha = wordAlpha)
@@ -1402,8 +1403,7 @@ fun Lyrics(
                       when {
                         !isActiveLine -> FontWeight.Bold
                         hasWordPassed -> FontWeight.Bold
-                        isWordActive -> FontWeight.ExtraBold
-                        else -> FontWeight.Medium
+                        else -> FontWeight.Bold
                       }
 
                     val wordShadow =
