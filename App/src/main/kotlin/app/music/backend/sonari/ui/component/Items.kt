@@ -140,7 +140,7 @@ inline fun ListItem(
   shape: Shape = RectangleShape,
   drawHighlight: Boolean = true,
   horizontalPadding: Dp = 16.dp,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   verticalPadding: Dp = 2.dp,
 ) {
   Row(
@@ -152,7 +152,7 @@ inline fun ListItem(
         .background(
           color =
             when {
-              isActive -> MaterialTheme.colorScheme.secondaryContainer
+              isActive -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
               isSelected == true && drawHighlight ->
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
               else -> color
@@ -219,7 +219,7 @@ fun ListItem(
   shape: Shape = RectangleShape,
   drawHighlight: Boolean = true,
   horizontalPadding: Dp = 16.dp,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   verticalPadding: Dp = 2.dp,
 ) =
   ListItem(
@@ -260,7 +260,7 @@ fun ListItem(
   shape: Shape = RectangleShape,
   drawHighlight: Boolean = true,
   horizontalPadding: Dp = 16.dp,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   verticalPadding: Dp = 2.dp,
 ) =
   ListItem(
@@ -404,7 +404,7 @@ fun SongListItem(
   trailingContent: @Composable RowScope.() -> Unit = {},
   drawHighlight: Boolean = true,
   shape: Shape = RectangleShape,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   horizontalPadding: Dp = 16.dp,
 ) {
   val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
@@ -523,7 +523,7 @@ fun SongGridItem(
 fun ArtistListItem(
   artist: Artist,
   modifier: Modifier = Modifier,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   shape: Shape = RectangleShape,
   badges: @Composable RowScope.() -> Unit = {
     if (artist.artist.bookmarkedAt != null) {
@@ -598,7 +598,7 @@ fun ArtistGridItem(
 fun AlbumListItem(
   album: Album,
   modifier: Modifier = Modifier,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   shape: Shape = RectangleShape,
   showLikedIcon: Boolean = true,
   badges: @Composable RowScope.() -> Unit = {
@@ -761,7 +761,7 @@ fun AlbumGridItem(
 fun PlaylistListItem(
   playlist: Playlist,
   modifier: Modifier = Modifier,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   autoPlaylist: Boolean = false,
   badges: @Composable RowScope.() -> Unit = {
     val downloadUtil = LocalDownloadUtil.current
@@ -966,7 +966,7 @@ fun MediaMetadataListItem(
   isActive: Boolean = false,
   isPlaying: Boolean = false,
   shape: Shape = RectangleShape,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   verticalPadding: Dp = 2.dp,
   trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
@@ -1064,7 +1064,7 @@ fun rememberItemDownloaded(item: YTItem): Boolean {
 fun YouTubeListItem(
   item: YTItem,
   modifier: Modifier = Modifier,
-  color: Color = MaterialTheme.colorScheme.surfaceContainer,
+  color: Color = Color.Transparent,
   albumIndex: Int? = null,
   showDownloadedTag: Boolean = false,
   isSelected: Boolean = false,
