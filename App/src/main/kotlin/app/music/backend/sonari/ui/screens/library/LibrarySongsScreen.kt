@@ -2,6 +2,9 @@ package app.music.backend.sonari.ui.screens.library
 
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -39,6 +42,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -119,6 +125,8 @@ fun LibrarySongsScreen(
   }
 
   val lazyListState = rememberLazyListState()
+  // While the roulette spins the wheel, frost the top and bottom of the screen smoothly.
+  val frostBlur = 10.dp * (roulette?.blurProgress ?: 0f)
 
   val backStackEntry by navController.currentBackStackEntryAsState()
   val scrollToTop =
@@ -139,17 +147,23 @@ fun LibrarySongsScreen(
     }
 
   // The shuffle FAB lives next to the library's add button in LibraryScreen; it bumps the
-  // roulette tick and this screen reacts with whatever songs are currently on the list.
+  // roulette tick and this screen runs the wheel over whatever songs are on the list, then
+  // queues them shuffled with the winner first.
   val currentSongs by rememberUpdatedState(filteredSongs)
   LaunchedEffect(roulette?.tick) {
     val state = roulette ?: return@LaunchedEffect
     if (state.tick == 0 || currentSongs.isEmpty()) return@LaunchedEffect
-    playerConnection.playQueue(
-      ListQueue(
-        title = context.getString(R.string.queue_all_songs),
-        items = currentSongs.shuffled().map { it.toMediaItem() },
-      ),
-    )
+    state.run(currentSongs) { winner ->
+      val queue = currentSongs.shuffled().toMutableList()
+      queue.remove(winner)
+      queue.add(0, winner)
+      playerConnection.playQueue(
+        ListQueue(
+          title = context.getString(R.string.queue_all_songs),
+          items = queue.map { it.toMediaItem() },
+        ),
+      )
+    }
   }
 
   Box(
@@ -166,7 +180,10 @@ fun LibrarySongsScreen(
           key = "filter",
           contentType = CONTENT_TYPE_HEADER,
         ) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.then(if (frostBlur > 0.1.dp) Modifier.blur(frostBlur) else Modifier),
+          ) {
             Spacer(Modifier.width(12.dp))
             FilterChip(
               label = { Text(stringResource(R.string.songs)) },
@@ -204,7 +221,9 @@ fun LibrarySongsScreen(
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier =
+              Modifier.padding(horizontal = 16.dp)
+                .then(if (frostBlur > 0.1.dp) Modifier.blur(frostBlur) else Modifier),
           ) {
             SortHeader(
               sortType = sortType,
@@ -243,61 +262,41 @@ fun LibrarySongsScreen(
               selection.remove(song.id)
             }
           }
-          SongListItem(
-            song = song,
-            showInLibraryIcon = true,
-            isActive = song.id == mediaMetadata?.id,
-            isPlaying = isPlaying,
-            showLikedIcon = true,
-            showDownloadIcon = filter != SongFilter.DOWNLOADED,
-            showSize = filter == SongFilter.DOWNLOADED,
-            shape = listItemShape(index, filteredSongs.size),
-            trailingContent = {
-              if (inSelectMode) {
-                Checkbox(checked = selection.contains(song.id), onCheckedChange = onCheckedChange)
-              } else {
-                IconButton(
-                  onClick = {
-                    menuState.show {
-                      SongMenu(
-                        originalSong = song,
-                        navController = navController,
-                        onDismiss = menuState::dismiss,
-                      )
-                    }
-                  },
-                ) {
-                  Icon(
-                    painter = painterResource(R.drawable.more_vert),
-                    contentDescription = null,
-                  )
-                }
-              }
-            },
+          val isWinner = roulette != null && roulette.winnerSongId == song.id
+          val winnerPulse by
+            animateFloatAsState(
+              targetValue = if (isWinner) 1.045f else 1f,
+              animationSpec = spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow),
+              label = "rouletteWinnerPulse",
+            )
+          Box(
             modifier =
-              Modifier.fillMaxWidth()
-                .combinedClickable(
-                  onClick = {
-                    if (inSelectMode) {
-                      onCheckedChange(!selection.contains(song.id))
-                    } else if (song.id == mediaMetadata?.id) {
-                      playerConnection.togglePlayPause()
-                    } else {
-                      playerConnection.playQueue(
-                        ListQueue(
-                          title = context.getString(R.string.queue_all_songs),
-                          items = filteredSongs.map { it.toMediaItem() },
-                          startIndex = index,
-                        ),
-                      )
-                    }
-                  },
-                  onLongClick = {
-                    if (!inSelectMode) {
-                      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                      inSelectMode = true
-                      onCheckedChange(true)
-                    } else {
+              Modifier.fillMaxWidth().graphicsLayer {
+                scaleX = winnerPulse
+                scaleY = winnerPulse
+              }
+          ) {
+            SongListItem(
+              song = song,
+              showInLibraryIcon = true,
+              isActive = song.id == mediaMetadata?.id,
+              isPlaying = isPlaying,
+              showLikedIcon = true,
+              showDownloadIcon = filter != SongFilter.DOWNLOADED,
+              showSize = filter == SongFilter.DOWNLOADED,
+              shape = listItemShape(index, filteredSongs.size),
+              color =
+                if (roulette != null && roulette.highlightSongId == song.id) {
+                  MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+                } else {
+                  Color.Transparent
+                },
+              trailingContent = {
+                if (inSelectMode) {
+                  Checkbox(checked = selection.contains(song.id), onCheckedChange = onCheckedChange)
+                } else {
+                  IconButton(
+                    onClick = {
                       menuState.show {
                         SongMenu(
                           originalSong = song,
@@ -305,13 +304,57 @@ fun LibrarySongsScreen(
                           onDismiss = menuState::dismiss,
                         )
                       }
-                    }
+                    },
+                  ) {
+                    Icon(
+                      painter = painterResource(R.drawable.more_vert),
+                      contentDescription = null,
+                    )
                   }
-                )
-                .animateItem(),
-          )
+                }
+              },
+              modifier =
+                Modifier.fillMaxWidth()
+                  .combinedClickable(
+                    onClick = {
+                      if (inSelectMode) {
+                        onCheckedChange(!selection.contains(song.id))
+                      } else if (song.id == mediaMetadata?.id) {
+                        playerConnection.togglePlayPause()
+                      } else {
+                        playerConnection.playQueue(
+                          ListQueue(
+                            title = context.getString(R.string.queue_all_songs),
+                            items = filteredSongs.map { it.toMediaItem() },
+                            startIndex = index,
+                          ),
+                        )
+                      }
+                    },
+                    onLongClick = {
+                      if (!inSelectMode) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        inSelectMode = true
+                        onCheckedChange(true)
+                      } else {
+                        menuState.show {
+                          SongMenu(
+                            originalSong = song,
+                            navController = navController,
+                            onDismiss = menuState::dismiss,
+                          )
+                        }
+                      }
+                    }
+                  )
+                  .animateItem(),
+            )
+            roulette?.let { state -> ShuffleTrailOverlay(state, song.id, Modifier.matchParentSize()) }
+          }
         }
       }
+
+      roulette?.let { state -> ShuffleFrostOverlay(state, Modifier.matchParentSize()) }
 
       androidx.compose.animation.AnimatedVisibility(
         visible = inSelectMode,
