@@ -1781,7 +1781,10 @@ fun SwipeToSongBox(
       modifier =
         Modifier.offset { IntOffset(offset.floatValue.roundToInt(), 0) }
           .fillMaxWidth()
-          .background(MaterialTheme.colorScheme.surface),
+          // Transparent: an opaque surface here painted a black slab behind every swipeable
+          // song row and covered the app's gradient background (Library, search, playlists).
+          // While swiping, the content slides aside and reveals the icons layer behind it.
+          .background(Color.Transparent),
       content = content
     )
   }
