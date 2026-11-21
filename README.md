@@ -1,6 +1,34 @@
-# Sonari (Android)
+# Sonari
 
-Sonari is an Android music app built with Kotlin and Jetpack Compose. This repository contains the full Android project, including playback, library, lyrics, and related modules.
+An Android music app built with Kotlin and Jetpack Compose: local playback, YouTube streaming,
+synchronised lyrics, and a hand-built Now Playing screen.
+
+This repository is the full Android project, including playback, library, lyrics and related modules.
+
+## Credits
+
+Sonari is a **fork of [Echo Music](https://github.com/EchoMusicApp/Echo-Music)**, not an original
+codebase. Most of what is in this repository is their work, licensed GPL-3.0, and it stays that way.
+Two projects in particular made Sonari possible:
+
+- **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** — the base of the app. Playback,
+  streaming, library, downloads, lyrics plumbing and the module layout all come from here.
+- **[Mochy Music](https://github.com/realidkroo/Mochy-Music)** — the project Echo itself is built on,
+  and the inspiration and reference for the boot animation and the lyric animations.
+
+Lyrics providers used through Echo: **[LrcLib](https://lrclib.net)**, KuGou, BetterLyrics, YouLyPlus,
+Paxsenix, Unison and **[SimpMusic](https://github.com/maxrave-dev/SimpMusic)**.
+
+## What Sonari changes
+
+- A rebuilt Now Playing screen and a shuffle wheel for the library.
+- New lyric renderers: a word-sweep line renderer and a letter-by-letter bloom style, selectable in
+  Appearance settings, with ripple follow-through between lines.
+- Streamlined settings and navigation: removed modules and screens that were not used, in favour of a
+  smaller, faster app.
+- Audio and battery work: playback, DSP and background behaviour tuned for long sessions.
+
+The exact list of changes is in the git history, module by module.
 
 ## Requirements
 
@@ -40,7 +68,9 @@ Sonari is an Android music app built with Kotlin and Jetpack Compose. This repos
    Do **not** commit real signing credentials.
 
 4. **(Optional) Firebase / Google services**
-   The project can be built without Firebase configuration. If you want Firebase features, add your own `App/google-services.json` locally (it is gitignored). Release builds and some CI flows may expect signing/Firebase secrets when configured.
+   The project can be built without Firebase configuration. If you want Firebase features, add your
+   own `App/google-services.json` locally (it is gitignored). Release builds and some CI flows may
+   expect signing/Firebase secrets when configured.
 
 ## Build & Run
 
@@ -95,19 +125,6 @@ These are ignored by git and should remain local:
 - build outputs (`build/`, `.gradle/`, etc.)
 - any local debug dumps or secrets
 
-## Credits
-
-The Android app is a **fork of Echo Music**, not an original codebase. Sonari's own work sits on top
-of it and the credit for the base app belongs to its authors:
-
-- **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** — the app this project is forked from.
-  Most of what is in this repository is their code, licensed GPL-3.0.
-- **[Mochy Music](https://github.com/realidkroo/Mochy-Music)** — the project Echo Music itself is based on.
-- Lyrics providers used through Echo: **[LrcLib](https://lrclib.net)**, KuGou, BetterLyrics,
-  YouLyPlus, Paxsenix, Unison and **[SimpMusic](https://github.com/maxrave-dev/SimpMusic)**.
-
-The list of what Sonari changed is in the git history, module by module.
-
 ## License
 
-See [LICENSE](LICENSE) for licensing information.
+GPL-3.0, as inherited from Echo Music. See [LICENSE](LICENSE).
