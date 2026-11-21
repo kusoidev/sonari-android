@@ -52,7 +52,7 @@ the agent full context without re-scanning the whole codebase every session.
 >    before staging. If a script is genuinely reusable project tooling, move
 >    it to `scripts/` with a clear name and docstring; otherwise delete it.
 > 2. **Verify the build is clean.** Run
->    `./gradlew :app:compileUniversalGmsDebugKotlin` and confirm
+>    `./gradlew :App:compileUniversalGmsDebugKotlin` and confirm
 >    `BUILD SUCCESSFUL` with no errors before committing.
 > 3. **Write a proper commit message.** Title + body in Conventional Commits
 >    format (see "Commit message format" section below).
@@ -346,12 +346,12 @@ A 4-tier test suite covers database migrations, scoring algorithms, repository p
 
 Run tests with:
 ```bash
-./gradlew :core:testDebugUnitTest :app:testUniversalGmsDebugUnitTest
+./gradlew :Core:testDebugUnitTest :App:testUniversalGmsDebugUnitTest
 ```
 
 ## CI
 
-- `.github/workflows/android-build.yml` — runs `:core:testDebugUnitTest :app:testUniversalGmsDebugUnitTest` unit tests before assembling APK artifacts.
+- `.github/workflows/android-build.yml` — runs `:core:testDebugUnitTest :App:testUniversalGmsDebugUnitTest` unit tests before assembling APK artifacts.
 - `.github/workflows/codeql.yml` — static analysis / security scanning.
 
 ## Local Taste Engine

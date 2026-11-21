@@ -77,7 +77,7 @@ app/build/outputs/apk/
 
 Run unit tests (examples):
 ```bash
-./gradlew :core:testDebugUnitTest :lyrics:testDebugUnitTest :app:testUniversalGmsDebugUnitTest
+./gradlew :Core:testDebugUnitTest :Lyrics:testDebugUnitTest :App:testUniversalGmsDebugUnitTest
 ```
 
 ## Project notes
