@@ -9,15 +9,20 @@ Local files, folders and YouTube in one library, with lyrics that move with the 
 <br/>
 
 <a href="https://github.com/kusoidev/sonari-android/releases/latest">
-  <img src="https://img.shields.io/badge/version-1.4.6-2f6f4f?style=flat-square" alt="Version 1.4.6">
+  <img src="https://img.shields.io/github/v/release/kusoidev/sonari-android?label=release&style=flat-square&color=2f6f4f" alt="Latest release">
 </a>
 <a href="https://github.com/kusoidev/sonari-android/releases">
-  <img src="https://img.shields.io/badge/download-APK-2f6f4f?style=flat-square" alt="Download the APK">
+  <img src="https://img.shields.io/github/downloads/kusoidev/sonari-android/total?label=downloads&style=flat-square&color=444444" alt="Downloads">
+</a>
+<a href="https://github.com/kusoidev/sonari-android/stargazers">
+  <img src="https://img.shields.io/github/stars/kusoidev/sonari-android?label=stars&style=flat-square&color=444444" alt="Stars">
+</a>
+<a href="https://github.com/kusoidev/sonari-android/network/members">
+  <img src="https://img.shields.io/github/forks/kusoidev/sonari-android?label=forks&style=flat-square&color=444444" alt="Forks">
 </a>
 <img src="https://img.shields.io/badge/Android-8.0%2B-444444?style=flat-square" alt="Android 8.0+">
-<img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-444444?style=flat-square" alt="Kotlin, Jetpack Compose">
 <a href="LICENSE">
-  <img src="https://img.shields.io/badge/license-GPL--3.0-444444?style=flat-square" alt="GPL-3.0">
+  <img src="https://img.shields.io/github/license/kusoidev/sonari-android?style=flat-square&color=444444" alt="GPL-3.0">
 </a>
 
 </div>
@@ -124,6 +129,20 @@ Sonari is an independent, unofficial project for personal use, provided as is an
 - Sonari does not host or distribute music. Everything is fetched from third-party services when you ask for it, and those services can change or stop working at any time.
 - You are responsible for how you use the app, including the terms of service of the services you use and the copyright law where you live.
 - If you listen to an artist regularly, pay for their work somewhere. That is what keeps the music coming.
+
+---
+
+## Star history
+
+If Sonari is useful to you, a star helps other people find it.
+
+<a href="https://www.star-history.com/?repos=kusoidev%2Fsonari-android&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kusoidev/sonari-android&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kusoidev/sonari-android&type=date&theme=light&legend=top-left" />
+    <img alt="Star history chart" src="https://api.star-history.com/chart?repos=kusoidev/sonari-android&type=date&theme=dark&legend=top-left" />
+  </picture>
+</a>
 
 ## License
 
