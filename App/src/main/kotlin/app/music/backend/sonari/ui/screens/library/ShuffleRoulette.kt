@@ -12,7 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -41,13 +39,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import app.music.backend.sonari.R
 import app.music.backend.sonari.db.entities.Song
+import app.music.backend.sonari.ui.component.SongListItem
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.abs
@@ -60,9 +57,6 @@ import nl.dionsegijn.konfetti.compose.KonfettiView
 import nl.dionsegijn.konfetti.core.Party
 import nl.dionsegijn.konfetti.core.Position
 import nl.dionsegijn.konfetti.core.emitter.Emitter
-
-/** Height of one row of the wheel. */
-private val WheelRowHeight = 58.dp
 
 /** How many rows either side of the middle the wheel still draws. */
 private const val WHEEL_REACH = 4
@@ -109,6 +103,9 @@ class ShuffleRouletteState {
   var order by mutableStateOf<List<Song>>(emptyList())
     private set
 
+  /** Height of one row as the list draws it, measured from the first row that lands. */
+  var rowHeightPx by mutableFloatStateOf(0f)
+
   /** Called by the shuffle FAB. Ignored while a spin is already running. */
   fun begin() {
     if (!running) tick++
@@ -141,9 +138,9 @@ class ShuffleRouletteState {
     position = 0f
     speed = 0f
     val songs = order.size
-    val laps = if (songs > 12) 5 else 3
+    val laps = if (songs > 20) 3 else 2
     val target = (winnerIndex + laps * songs).toFloat()
-    val durationMs = (1500f + songs * 5f).coerceIn(1800f, 2800f)
+    val durationMs = (2200f + songs * 4f).coerceIn(2400f, 3200f)
     val frostAnim = Animatable(0f)
 
     try {
@@ -159,7 +156,7 @@ class ShuffleRouletteState {
         position = target * (1f - inverse * inverse * inverse)
         val seconds = ((now - previousFrame) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
         previousFrame = now
-        speed = ((position - previousPosition) / seconds / 45f).coerceIn(0f, 1f)
+        speed = ((position - previousPosition) / seconds / 40f).coerceIn(0f, 1f)
         previousPosition = position
         if (t >= 1f) break
       }
@@ -196,9 +193,10 @@ fun BoxScope.ShuffleWheel(state: ShuffleRouletteState, modifier: Modifier = Modi
   if (songs.isEmpty()) return
 
   val count = songs.size
-  val rowPx = with(LocalDensity.current) { WheelRowHeight.toPx() }
+  val fallbackRowPx = with(LocalDensity.current) { 72.dp.toPx() }
   // Quantised so the blur is rebuilt a handful of times over the spin instead of every frame.
   val smear = 14.dp * (((state.speed * 4f).roundToInt() / 4f))
+  val restingRowPx = if (state.rowHeightPx > 0f) state.rowHeightPx else fallbackRowPx
 
   Box(
     modifier =
@@ -209,47 +207,47 @@ fun BoxScope.ShuffleWheel(state: ShuffleRouletteState, modifier: Modifier = Modi
   ) {
     Box(
       modifier =
-        Modifier.fillMaxWidth(0.94f)
-          .height(WheelRowHeight)
+        Modifier.fillMaxWidth(0.96f)
+          .height(with(LocalDensity.current) { restingRowPx.toDp() })
           .clip(RoundedCornerShape(18.dp))
           .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
     )
 
+    val rowPx = if (state.rowHeightPx > 0f) state.rowHeightPx else fallbackRowPx
     val first = floor(state.position).toInt() - WHEEL_REACH
     val last = ceil(state.position).toInt() + WHEEL_REACH
     for (row in first..last) {
       key(row) {
         val song = songs[((row % count) + count) % count]
-        Column(
-          horizontalAlignment = Alignment.CenterHorizontally,
+        Box(
           modifier =
-            Modifier.fillMaxWidth(0.9f)
+            Modifier.fillMaxWidth()
               .offset { IntOffset(0, ((row - state.position) * rowPx).roundToInt()) }
               .graphicsLayer {
                 val distance = abs(row - state.position)
                 val falloff = (distance / 2.4f).coerceIn(0f, 1f)
-                val scale = 1f - 0.3f * falloff
+                val scale = 1f - 0.22f * falloff
                 scaleX = scale
                 scaleY = scale
-                alpha = 1f - 0.72f * falloff
+                alpha = 1f - 0.7f * falloff
               },
         ) {
-          Text(
-            text = song.song.title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-          )
-          Text(
-            text = song.artists.joinToString { it.name },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+          // The row the list would draw, so the wheel shows the cover, the liked and library
+          // badges, the artist, the length and the size exactly as the list does.
+          SongListItem(
+            song = song,
+            isSwipeable = false,
+            showDownloadIcon = false,
+            showSize = true,
+            shape = RoundedCornerShape(12.dp),
+            trailingContent = {
+              Icon(painter = painterResource(R.drawable.more_vert), contentDescription = null)
+            },
+            modifier =
+              Modifier.fillMaxWidth().onGloballyPositioned { coords ->
+                val height = coords.size.height.toFloat()
+                if (height > 0f && height != state.rowHeightPx) state.rowHeightPx = height
+              },
           )
         }
       }
@@ -322,17 +320,18 @@ fun BoxScope.ShuffleNeedleOverlay(
       animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
       label = "shuffleNeedleAlpha",
     )
-  Row(
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.SpaceBetween,
-    modifier =
-      modifier
-        .fillMaxWidth()
-        .padding(horizontal = 6.dp)
-        .graphicsLayer { alpha = shown * state.frost },
+  Box(
+    modifier = modifier.fillMaxSize().graphicsLayer { alpha = shown * state.frost },
+    contentAlignment = Alignment.Center,
   ) {
-    NeedleArrow(speed = state.speed, phase = jiggle, pointsRight = true)
-    NeedleArrow(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+    ) {
+      NeedleArrow(speed = state.speed, phase = jiggle, pointsRight = true)
+      NeedleArrow(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
+    }
   }
 }
 

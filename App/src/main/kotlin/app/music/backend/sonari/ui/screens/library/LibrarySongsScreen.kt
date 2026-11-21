@@ -336,9 +336,7 @@ fun LibrarySongsScreen(
         }
 
         roulette?.let { state -> ShuffleWheel(state, Modifier.matchParentSize()) }
-        roulette?.let { state ->
-          ShuffleNeedleOverlay(state, Modifier.align(Alignment.Center))
-        }
+        roulette?.let { state -> ShuffleNeedleOverlay(state, Modifier.matchParentSize()) }
         roulette?.let { state -> ShuffleConfetti(state, Modifier.matchParentSize()) }
       }
     }
