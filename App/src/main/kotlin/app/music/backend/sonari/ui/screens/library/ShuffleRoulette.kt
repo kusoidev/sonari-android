@@ -9,21 +9,24 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,64 +34,79 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.music.backend.sonari.R
+import app.music.backend.sonari.db.entities.Song
+import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
+import nl.dionsegijn.konfetti.compose.KonfettiView
+import nl.dionsegijn.konfetti.core.Party
+import nl.dionsegijn.konfetti.core.Position
+import nl.dionsegijn.konfetti.core.emitter.Emitter
 
-/** Top speed of the wheel in pixels per second — fast enough that the rows smear into a blur. */
-private const val SPIN_SPEED = 16_000f
+/** Height of one row of the wheel. */
+private val WheelRowHeight = 58.dp
 
-/** How many rows above the winner the wheel begins its final approach. */
-private const val RUN_UP_ROWS = 8
+/** How many rows either side of the middle the wheel still draws. */
+private const val WHEEL_REACH = 4
 
 /**
- * Shared between the library screen's shuffle FAB and the songs list. The FAB only calls [begin];
- * the songs screen watches [tick] and spins its own list: the rows race past the needle at the
- * centre of the screen with a motion blur, slow down, and land on the winner, which is then played
- * first with the rest of the library shuffled in behind it.
+ * Shared between the library screen's shuffle FAB and the songs screen. The FAB only calls [begin];
+ * the songs screen answers a fresh [tick] once with a spin, so leaving and re-entering the list
+ * never starts a wheel of its own.
  *
- * Only song rows are ever scrolled. The wheels never goes back to the top of the list, and when it
- * runs out at the bottom it wraps to the first song, so nothing above the songs moves.
+ * The wheel is drawn over the list rather than scrolling it: the list never moves, nothing on the
+ * screen shakes, and the order it spins through wraps without a seam, which is what made a scrolled
+ * wheel look like two separate runs.
  */
 class ShuffleRouletteState {
-  var tick: Int by mutableIntStateOf(0)
+  var tick by mutableIntStateOf(0)
     private set
 
-  var running: Boolean by mutableStateOf(false)
+  var running by mutableStateOf(false)
     private set
 
-  /** The row the wheel is aiming at; the list attaches a position probe to that one row. */
-  var targetSongId: String? by mutableStateOf(null)
+  private var claimedTick by mutableIntStateOf(0)
+
+  /** True while the wheel is on screen. */
+  var visible by mutableStateOf(false)
     private set
 
-  /** The row the wheel settled on; drives the winner pulse. */
-  var winnerSongId: String? by mutableStateOf(null)
+  /** True once the wheel has stopped on a song, while its confetti is going off. */
+  var landed by mutableStateOf(false)
     private set
 
-  /** 0..1 — how strongly the top and bottom of the screen are frosted. */
-  var blurProgress: Float by mutableFloatStateOf(0f)
+  /** 0..1 how strongly the top and bottom of the screen are frosted. */
+  var frost by mutableFloatStateOf(0f)
     private set
 
-  /** 0..1 — the current scroll speed: drives the motion blur and how hard the needle rattles. */
-  var speed: Float by mutableFloatStateOf(0f)
+  /** How fast the wheel is turning, 0..1: drives the smear and how hard the brackets hit. */
+  var speed by mutableFloatStateOf(0f)
     private set
 
-  /**
-   * How far the brackets have slid from the middle to sit on a winner the list could not scroll to
-   * the centre of the screen — one too close to the top or the bottom. Zero otherwise.
-   */
-  var needleShiftPx: Float by mutableFloatStateOf(0f)
+  /** Which song the wheel is on, as a continuous index into [order]: its rotation position. */
+  var position by mutableFloatStateOf(0f)
+    private set
+
+  /** The order the wheel spins through, which is also the queue that follows the winner. */
+  var order by mutableStateOf<List<Song>>(emptyList())
     private set
 
   /** Called by the shuffle FAB. Ignored while a spin is already running. */
@@ -97,188 +115,183 @@ class ShuffleRouletteState {
   }
 
   /**
-   * Spins [listState] over [rowCount] songs and lands on the song at [winnerRow].
-   *
-   * The spin is one eased scroll from wherever the list is now: it starts at [SPIN_SPEED] and
-   * decelerates over enough rows to read as a wheel. When the list runs out at the bottom it wraps
-   * to its first song — the only place it ever returns to — and the final approach brings the
-   * winner dead centre on the needle using that row's measured position.
+   * Claims a tap exactly once. Without this, coming back to the songs list would replay the last
+   * spin, because this state outlives the screen.
    */
-  internal suspend fun run(
-    listState: LazyListState,
-    probe: ShuffleNeedleProbe,
-    rowCount: Int,
-    winnerRow: Int,
-    winnerId: String,
-  ) {
-    if (running || rowCount <= 0) return
+  fun claim(tick: Int): Boolean {
+    if (tick == 0 || tick == claimedTick) return false
+    claimedTick = tick
+    return true
+  }
+
+  /**
+   * Spins through [order] and stops on the song at [winnerIndex], then leaves the winner on screen
+   * for a moment while the confetti goes off.
+   *
+   * One continuous ease-out from the first frame to the last: the wheel starts fast enough to smear,
+   * slows the whole way, and stops exactly on the winner because the rotation position ends on its
+   * index. Nothing is measured, so it cannot miss.
+   */
+  internal suspend fun spin(order: List<Song>, winnerIndex: Int) {
+    if (running || order.isEmpty()) return
     running = true
-    targetSongId = winnerId
-    needleShiftPx = 0f
-    probe.reset()
-    val frost = Animatable(0f)
+    visible = true
+    landed = false
+    this.order = order
+    position = 0f
+    speed = 0f
+    val songs = order.size
+    val laps = if (songs > 12) 5 else 3
+    val target = (winnerIndex + laps * songs).toFloat()
+    val durationMs = (1500f + songs * 5f).coerceIn(1800f, 2800f)
+    val frostAnim = Animatable(0f)
 
     try {
-      // Frost the top and bottom in as the wheel starts.
-      frost.animateTo(1f, tween(280)) { blurProgress = value }
+      frostAnim.animateTo(1f, tween(240)) { frost = value }
 
-      val rowPx = averageRowPx(listState)
-      val here = listState.firstVisibleItemIndex.coerceIn(0, rowCount - 1)
-      val runUp = (winnerRow - RUN_UP_ROWS).coerceAtLeast(0)
-      val forwardRows = (runUp - here + rowCount) % rowCount
-      // Extra laps so a short library still turns the wheel several times, while a long one only
-      // goes round when it has to.
-      val lapRows = SPIN_SPEED * 2.4f / 3f / rowPx
-      var laps = ((lapRows - forwardRows) / rowCount).roundToInt().coerceAtLeast(0)
-      if (forwardRows < 4 && laps == 0) laps = 1
-      val totalPx = (forwardRows + laps * rowCount) * rowPx
-      // An ease-out cubic starts at three times its average speed, so this length of spin sets off
-      // at SPIN_SPEED. Clamped so the wheel neither blinks past on a short list nor crawls on a long.
-      val durationMs = (3f * totalPx / SPIN_SPEED * 1000f).coerceIn(1500f, 3000f)
-
-      val canScroll =
-        listState.layoutInfo.totalItemsCount > listState.layoutInfo.visibleItemsInfo.size
-      var travelled = 0f
       val start = withFrameNanos { it }
-      var previous = start
+      var previousFrame = start
+      var previousPosition = 0f
       while (true) {
         val now = withFrameNanos { it }
         val t = ((now - start) / 1_000_000f / durationMs).coerceIn(0f, 1f)
         val inverse = 1f - t
-        val eased = 1f - inverse * inverse * inverse
-        val delta = totalPx * eased - travelled
-        val seconds = ((now - previous) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
-        previous = now
-        val consumed = listState.scrollBy(delta)
-        travelled += delta
-        // The list ran out at the bottom: wrap to its first song and carry on with the wheel.
-        if (canScroll && delta > 1f && abs(consumed) < delta * 0.5f) listState.scrollToItem(0)
-        speed = (abs(delta) / seconds / SPIN_SPEED).coerceIn(0f, 1f)
+        position = target * (1f - inverse * inverse * inverse)
+        val seconds = ((now - previousFrame) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+        previousFrame = now
+        speed = ((position - previousPosition) / seconds / 45f).coerceIn(0f, 1f)
+        previousPosition = position
         if (t >= 1f) break
       }
 
-      // Final approach: decelerate onto the winner using its measured position, so the wheel stops
-      // exactly on it whatever the row heights are.
-      var approach = SPIN_SPEED * 0.35f
-      var stuck = 0
-      var frames = 0
-      var previousFrame = withFrameNanos { it }
-      while (frames++ < 300) {
-        val now = withFrameNanos { it }
-        val seconds = ((now - previousFrame) / 1_000_000_000f).coerceIn(0f, 0.05f)
-        previousFrame = now
-        val error = visibleError(listState, probe, winnerId)
-        if (error != null && abs(error) <= 0.75f) break
-        val maxStep = approach * seconds
-        val step =
-          if (error == null) {
-            // The winner is not on screen yet: keep the wheel turning towards it.
-            maxStep
-          } else {
-            (error * 0.2f).coerceIn(-maxStep, maxStep)
-          }
-        val consumed = listState.scrollBy(step)
-        if (error == null && abs(consumed) < step * 0.5f) listState.scrollToItem(0)
-        if (abs(step) > 1.5f && abs(consumed) < 0.5f) {
-          // Nothing left to scroll: the winner is as close to the needle as the list can get.
-          if (++stuck > 2) break
-        } else {
-          stuck = 0
-        }
-        approach = maxOf(approach * 0.985f, 1_200f)
-        speed = (approach / SPIN_SPEED).coerceIn(0f, 1f)
-      }
-
+      position = target
       speed = 0f
-      // A winner the list could not bring to the middle of the screen: the brackets slide onto it.
-      val resting = visibleError(listState, probe, winnerId)
-      if (resting != null && abs(resting) > 0.75f) {
-        val limit = listState.layoutInfo.viewportSize.height / 2f - 60f
-        needleShiftPx = resting.coerceIn(-limit, limit)
-      }
-      winnerSongId = winnerId
-      delay(420) // let the winner pulse read before the frost lifts
+      landed = true
+      delay(900)
 
-      frost.animateTo(0f, tween(380)) { blurProgress = value }
+      frostAnim.animateTo(0f, tween(320)) { frost = value }
     } finally {
       running = false
+      visible = false
+      landed = false
+      frost = 0f
       speed = 0f
-      blurProgress = 0f
-      needleShiftPx = 0f
-      targetSongId = null
-      winnerSongId = null
+      position = 0f
+      this.order = emptyList()
     }
   }
 }
 
-/** The average height of the rows on screen, in pixels, used to size the spin. */
-private fun averageRowPx(listState: LazyListState): Float {
-  val sizes = listState.layoutInfo.visibleItemsInfo.map { it.size.toFloat() }
-  return if (sizes.isEmpty()) 200f else sizes.average().toFloat().coerceAtLeast(1f)
-}
-
 /**
- * How far the winning row still has to travel up to sit under the needle, in pixels. Null while the
- * row is not on screen, since a row that has scrolled away has no position worth aiming at.
+ * The wheel itself: a column of song titles turning past the middle of the screen, the one between
+ * the brackets full size and bright while the rows either side of it shrink and fade away.
+ *
+ * The rows are keyed by their slot number and read the rotation position only in the layout and
+ * draw phases, so a fast spin moves them without recomposing every row on every frame.
  */
-private fun visibleError(
-  listState: LazyListState,
-  probe: ShuffleNeedleProbe,
-  winnerId: String,
-): Float? {
-  if (listState.layoutInfo.visibleItemsInfo.none { it.key == winnerId }) return null
-  return probe.errorPx()
-}
-
-/**
- * Measures the two things the wheel needs to land a row on the needle exactly: where the needle sits
- * on screen, and where the winning row currently is. Both are reported in root coordinates by the
- * composables that draw them, so nothing is assumed about the list's content padding.
- */
-class ShuffleNeedleProbe {
-  var needleCenterY: Float = Float.NaN
-  var rowTopY: Float = Float.NaN
-  var rowHeight: Float = 0f
-
-  /** How far the winning row still has to travel up to sit under the needle; null until it is drawn. */
-  fun errorPx(): Float? {
-    if (needleCenterY.isNaN() || rowTopY.isNaN() || rowHeight <= 0f) return null
-    return (rowTopY + rowHeight / 2f) - needleCenterY
-  }
-
-  fun reset() {
-    rowTopY = Float.NaN
-    rowHeight = 0f
-  }
-}
-
-/** Frosted bands over the top and bottom of the song list, fading with [ShuffleRouletteState.blurProgress]. */
 @Composable
-fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
-  if (state.blurProgress <= 0.01f) return
-  val surface = MaterialTheme.colorScheme.surface
-  Box(modifier.graphicsLayer { alpha = state.blurProgress }) {
+fun BoxScope.ShuffleWheel(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
+  if (!state.visible) return
+  val songs = state.order
+  if (songs.isEmpty()) return
+
+  val count = songs.size
+  val rowPx = with(LocalDensity.current) { WheelRowHeight.toPx() }
+  // Quantised so the blur is rebuilt a handful of times over the spin instead of every frame.
+  val smear = 14.dp * (((state.speed * 4f).roundToInt() / 4f))
+
+  Box(
+    modifier =
+      modifier
+        .graphicsLayer { alpha = state.frost }
+        .then(if (smear > 0.4.dp) Modifier.blur(smear) else Modifier),
+    contentAlignment = Alignment.Center,
+  ) {
     Box(
       modifier =
-        Modifier
-          .fillMaxWidth()
-          .height(170.dp)
+        Modifier.fillMaxWidth(0.94f)
+          .height(WheelRowHeight)
+          .clip(RoundedCornerShape(18.dp))
+          .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+    )
+
+    val first = floor(state.position).toInt() - WHEEL_REACH
+    val last = ceil(state.position).toInt() + WHEEL_REACH
+    for (row in first..last) {
+      key(row) {
+        val song = songs[((row % count) + count) % count]
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          modifier =
+            Modifier.fillMaxWidth(0.9f)
+              .offset { IntOffset(0, ((row - state.position) * rowPx).roundToInt()) }
+              .graphicsLayer {
+                val distance = abs(row - state.position)
+                val falloff = (distance / 2.4f).coerceIn(0f, 1f)
+                val scale = 1f - 0.3f * falloff
+                scaleX = scale
+                scaleY = scale
+                alpha = 1f - 0.72f * falloff
+              },
+        ) {
+          Text(
+            text = song.song.title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+          )
+          Text(
+            text = song.artists.joinToString { it.name },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+          )
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Frosted edges for the wheel, anchored to the very top and bottom of the screen instead of the top
+ * of the list, so there is no hard edge where the header ends. Only the songs sit behind it: the
+ * chips and the sort row are drawn over it and stay crisp.
+ */
+@Composable
+fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
+  if (state.frost <= 0.01f) return
+  val surface = MaterialTheme.colorScheme.surface
+  Box(modifier = modifier.graphicsLayer { alpha = state.frost }) {
+    Box(
+      modifier =
+        Modifier.fillMaxWidth()
+          .height(280.dp)
           .align(Alignment.TopCenter)
           .background(
             Brush.verticalGradient(
-              listOf(surface.copy(alpha = 0.8f), surface.copy(alpha = 0.45f), Color.Transparent),
+              0f to surface.copy(alpha = 0.85f),
+              0.35f to surface.copy(alpha = 0.55f),
+              0.7f to surface.copy(alpha = 0.22f),
+              1f to Color.Transparent,
             )
           ),
     )
     Box(
       modifier =
-        Modifier
-          .fillMaxWidth()
-          .height(210.dp)
+        Modifier.fillMaxWidth()
+          .height(300.dp)
           .align(Alignment.BottomCenter)
           .background(
             Brush.verticalGradient(
-              listOf(Color.Transparent, surface.copy(alpha = 0.5f), surface.copy(alpha = 0.85f)),
+              0f to Color.Transparent,
+              0.3f to surface.copy(alpha = 0.22f),
+              0.65f to surface.copy(alpha = 0.55f),
+              1f to surface.copy(alpha = 0.88f),
             )
           ),
     )
@@ -286,17 +299,16 @@ fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier
 }
 
 /**
- * The "> song <" brackets the wheel lands between. Each row that flies past knocks them outward and
- * they spring back, the two trading the blows half a beat apart. When the wheel settles they slide
- * onto the winning row if it could not be brought to the middle of the screen.
+ * The "> song <" brackets around the middle of the wheel. Each row that turns past knocks them
+ * outward and they spring back, the two trading the blows half a beat apart, harder the faster the
+ * wheel is going.
  */
 @Composable
-fun ShuffleNeedleOverlay(
+fun BoxScope.ShuffleNeedleOverlay(
   state: ShuffleRouletteState,
-  probe: ShuffleNeedleProbe,
   modifier: Modifier = Modifier,
 ) {
-  if (!state.running) return
+  if (!state.visible) return
   val jiggle by
     rememberInfiniteTransition(label = "shuffleNeedle").animateFloat(
       initialValue = 0f,
@@ -304,11 +316,11 @@ fun ShuffleNeedleOverlay(
       animationSpec = infiniteRepeatable(tween(durationMillis = 130, easing = LinearEasing)),
       label = "shuffleNeedleJiggle",
     )
-  val shift by
+  val shown by
     animateFloatAsState(
-      targetValue = state.needleShiftPx,
-      animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-      label = "shuffleNeedleShift",
+      targetValue = if (state.visible) 1f else 0f,
+      animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+      label = "shuffleNeedleAlpha",
     )
   Row(
     verticalAlignment = Alignment.CenterVertically,
@@ -316,12 +328,8 @@ fun ShuffleNeedleOverlay(
     modifier =
       modifier
         .fillMaxWidth()
-        .padding(horizontal = 8.dp)
-        .offset { IntOffset(0, shift.roundToInt()) }
-        .onGloballyPositioned { coords ->
-          probe.needleCenterY = coords.positionInRoot().y + coords.size.height / 2f
-        }
-        .graphicsLayer { alpha = state.blurProgress },
+        .padding(horizontal = 6.dp)
+        .graphicsLayer { alpha = shown * state.frost },
   ) {
     NeedleArrow(speed = state.speed, phase = jiggle, pointsRight = true)
     NeedleArrow(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
@@ -342,13 +350,32 @@ private fun NeedleArrow(speed: Float, phase: Float, pointsRight: Boolean) {
     contentDescription = null,
     tint = MaterialTheme.colorScheme.primary,
     modifier =
-      Modifier.size(30.dp).graphicsLayer {
-        rotationZ = hit * 9f * speed
-        translationX = outward * hit * 7.dp.toPx() * speed
-        translationY = sin(phase * 6f * PI.toFloat()) * 2.dp.toPx() * speed
-        val stretch = 1f + 0.13f * abs(hit) * speed
+      Modifier.size(34.dp).graphicsLayer {
+        rotationZ = hit * 11f * speed
+        translationX = outward * hit * 9.dp.toPx() * speed
+        translationY = sin(phase * 6f * PI.toFloat()) * 2.5f.dp.toPx() * speed
+        val stretch = 1f + 0.16f * abs(hit) * speed
         scaleX = stretch
         scaleY = 2f - stretch
       },
   )
+}
+
+/** A burst of confetti out of the middle of the wheel once it has stopped on a song. */
+@Composable
+fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
+  if (!state.landed) return
+  val parties =
+    listOf(
+      Party(
+        speed = 16f,
+        maxSpeed = 52f,
+        damping = 0.9f,
+        spread = 360,
+        colors = listOf(0xfce18a, 0xff726d, 0xf4306d, 0xb48def, 0x4cd7f0),
+        emitter = Emitter(duration = 260, TimeUnit.MILLISECONDS).max(180),
+        position = Position.Relative(0.5, 0.5),
+      )
+    )
+  KonfettiView(modifier = modifier.fillMaxSize(), parties = parties)
 }
