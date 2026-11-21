@@ -220,6 +220,7 @@ fun OnlineSearchResult(
       }
       YouTubeListItem(
         item = item,
+        showDownloadedTag = true,
         isActive =
           when (item) {
             is SongItem -> mediaMetadata?.id == item.id

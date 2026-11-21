@@ -587,12 +587,14 @@ fun AutoPlaylistScreen(
         }
       },
       colors =
-        if (!isSearching && !inSelectMode) {
+        if (inSelectMode) {
+          androidx.compose.material3.TopAppBarDefaults.topAppBarColors()
+        } else {
+          // Search included: the bar has to stay transparent so the blurred
+          // backdrop of the playlist keeps showing through instead of a black band.
           androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent
           )
-        } else {
-          androidx.compose.material3.TopAppBarDefaults.topAppBarColors()
         }
     )
   }

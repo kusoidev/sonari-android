@@ -1010,6 +1010,55 @@ fun MediaMetadataListItem(
   )
 }
 
+@Composable
+fun DownloadedTag(modifier: Modifier = Modifier) {
+  Text(
+    text = stringResource(R.string.filter_downloaded),
+    style = MaterialTheme.typography.labelSmall,
+    color = MaterialTheme.colorScheme.onPrimaryContainer,
+    modifier =
+      modifier
+        .clip(RoundedCornerShape(4.dp))
+        .background(MaterialTheme.colorScheme.primaryContainer)
+        .padding(horizontal = 6.dp, vertical = 2.dp),
+  )
+}
+
+/**
+ * Whether a search result is available offline: the song itself, every song of an album, or every
+ * song of an artist.
+ */
+@Composable
+fun rememberItemDownloaded(item: YTItem): Boolean {
+  val database = LocalDatabase.current
+  return when (item) {
+    is SongItem -> {
+      val download by
+        LocalDownloadUtil.current.getDownload(item.id).collectAsState(initial = null)
+      download?.state == STATE_COMPLETED
+    }
+    is AlbumItem -> {
+      val total by
+        produceState(0, item.id) { value = database.albumSongCount(item.id).firstOrNull() ?: 0 }
+      val downloaded by
+        produceState(0, item.id) {
+          value = database.albumDownloadedSongCount(item.id).firstOrNull() ?: 0
+        }
+      total > 0 && downloaded == total
+    }
+    is ArtistItem -> {
+      val total by
+        produceState(0, item.id) { value = database.artistSongCount(item.id).firstOrNull() ?: 0 }
+      val downloaded by
+        produceState(0, item.id) {
+          value = database.artistDownloadedSongCount(item.id).firstOrNull() ?: 0
+        }
+      total > 0 && downloaded == total
+    }
+    is PlaylistItem -> false
+  }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YouTubeListItem(
@@ -1017,6 +1066,7 @@ fun YouTubeListItem(
   modifier: Modifier = Modifier,
   color: Color = MaterialTheme.colorScheme.surfaceContainer,
   albumIndex: Int? = null,
+  showDownloadedTag: Boolean = false,
   isSelected: Boolean = false,
   isActive: Boolean = false,
   isPlaying: Boolean = false,
@@ -1044,6 +1094,10 @@ fun YouTubeListItem(
     if (item is SongItem) {
       val download by LocalDownloadUtil.current.getDownload(item.id).collectAsState(null)
       Icon.Download(download?.state)
+    }
+
+    if (showDownloadedTag && rememberItemDownloaded(item)) {
+      DownloadedTag()
     }
   },
   shape: Shape = RectangleShape,

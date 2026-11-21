@@ -1245,6 +1245,26 @@ interface DatabaseDao {
   /** Every song id in the database, used to spot completed downloads that have no row. */
   @Query("SELECT id FROM song") fun allSongIdsBlocking(): List<String>
 
+  /** How many songs an album holds, and how many of them are already on disk. */
+  @Query("SELECT COUNT(1) FROM song WHERE albumId = :albumId")
+  fun albumSongCount(albumId: String): Flow<Int>
+
+  @Query("SELECT COUNT(1) FROM song WHERE albumId = :albumId AND isDownloaded = 1")
+  fun albumDownloadedSongCount(albumId: String): Flow<Int>
+
+  /** How many songs an artist has, and how many of them are already on disk. */
+  @Query("SELECT COUNT(1) FROM song_artist_map WHERE artistId = :artistId")
+  fun artistSongCount(artistId: String): Flow<Int>
+
+  @Query(
+    """
+      SELECT COUNT(1) FROM song_artist_map
+      JOIN song ON song_artist_map.songId = song.id
+      WHERE song_artist_map.artistId = :artistId AND song.isDownloaded = 1
+    """
+  )
+  fun artistDownloadedSongCount(artistId: String): Flow<Int>
+
   @Query(
     "UPDATE song SET title = :title, duration = :duration, thumbnailUrl = :thumbnailUrl WHERE id = :id"
   )
