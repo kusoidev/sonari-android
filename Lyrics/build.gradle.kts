@@ -17,14 +17,8 @@ kotlin { jvmToolchain(21) }
 
 dependencies {
   implementation(project(":Core"))
-  implementation(project(":Unison"))
-  implementation(project(":LrcLib"))
-  implementation(project(":Kugou"))
-  implementation(project(":SimpMusic"))
-  implementation(project(":YouLyPlus"))
-  implementation(project(":BetterLyrics"))
-  implementation(project(":PaxsenixLyrics"))
   implementation(project(":Innertube"))
+  implementation(project(":LyricsProviders"))
 
   implementation(libs.kuromoji.ipadic)
   implementation(libs.tinypinyin)

@@ -64,7 +64,7 @@ fun AboutScreen(
   LaunchedEffect(Unit) {
     withContext(Dispatchers.IO) {
       try {
-        val url = java.net.URL("https://api.github.com/repos/SonariApp/Sonari/contributors")
+        val url = java.net.URL("https://api.github.com/repos/EchoMusicApp/Echo-Music/contributors")
         val json = url.openStream().bufferedReader().use { it.readText() }
         val array = JSONArray(json)
         val list = mutableListOf<Contributor>()
@@ -227,6 +227,12 @@ fun AboutScreen(
           title = "Community",
           items =
             listOf(
+              Material3SettingsItem(
+                icon = painterResource(R.drawable.github),
+                title = { Text("Echo Music (the app this is forked from)") },
+                description = { Text("github.com/EchoMusicApp/Echo-Music") },
+                onClick = { uriHandler.openUri("https://github.com/EchoMusicApp/Echo-Music") }
+              ),
               Material3SettingsItem(
                 icon = painterResource(R.drawable.ic_discord_new),
                 title = { Text("Discord") },

@@ -8,7 +8,7 @@ Sonari is an Android music app built with Kotlin and Jetpack Compose. This repos
 - JDK 21
 - Android SDK with:
   - Android SDK Platform 36 (target/compile per project config)
-  - Build tools / NDK `28.2.13676358` (as configured in `app/build.gradle.kts`)
+  - Build tools / NDK `28.2.13676358` (as configured in `App/build.gradle.kts`)
 - Git
 
 ## Setup
@@ -40,14 +40,14 @@ Sonari is an Android music app built with Kotlin and Jetpack Compose. This repos
    Do **not** commit real signing credentials.
 
 4. **(Optional) Firebase / Google services**
-   The project can be built without Firebase configuration. If you want Firebase features, add your own `app/google-services.json` locally (it is gitignored). Release builds and some CI flows may expect signing/Firebase secrets when configured.
+   The project can be built without Firebase configuration. If you want Firebase features, add your own `App/google-services.json` locally (it is gitignored). Release builds and some CI flows may expect signing/Firebase secrets when configured.
 
 ## Build & Run
 
 ### From Android Studio
 1. Open the project folder in Android Studio.
 2. Let Gradle sync complete.
-3. Select a device/emulator and run the `app` configuration.
+3. Select a device/emulator and run the `App` configuration.
 
 ### From the command line
 
@@ -70,7 +70,7 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 
 APKs are generated under:
 ```
-app/build/outputs/apk/
+App/build/outputs/apk/
 ```
 
 ## Tests
@@ -83,7 +83,7 @@ Run unit tests (examples):
 ## Project notes
 
 - **App ID:** `com.kusoi.sonari` (debug builds use the `.debug` suffix)
-- **Version:** see `app/build.gradle.kts` (`versionCode` / `versionName`)
+- **Version:** see `App/build.gradle.kts` (`versionCode` / `versionName`)
 - **Min SDK:** 26
 - **Toolchain:** JDK 21, Gradle wrapper included
 
@@ -91,18 +91,22 @@ Run unit tests (examples):
 
 These are ignored by git and should remain local:
 - `local.properties` (SDK path)
-- `app/google-services.json` / signing keys (`*.keystore`, `*.jks`)
+- `App/google-services.json` / signing keys (`*.keystore`, `*.jks`)
 - build outputs (`build/`, `.gradle/`, etc.)
 - any local debug dumps or secrets
 
 ## Credits
 
-Sonari is heavily based on:
+The Android app is a **fork of Echo Music**, not an original codebase. Sonari's own work sits on top
+of it and the credit for the base app belongs to its authors:
 
-- [Sonari](https://github.com/SonariApp/Sonari)
-- [Mochy Music](https://github.com/realidkroo/Mochy-Music)
+- **[Echo Music](https://github.com/EchoMusicApp/Echo-Music)** — the app this project is forked from.
+  Most of what is in this repository is their code, licensed GPL-3.0.
+- **[Mochy Music](https://github.com/realidkroo/Mochy-Music)** — the project Echo Music itself is based on.
+- Lyrics providers used through Echo: **[LrcLib](https://lrclib.net)**, KuGou, BetterLyrics,
+  YouLyPlus, Paxsenix, Unison and **[SimpMusic](https://github.com/maxrave-dev/SimpMusic)**.
 
-Huge thanks to their developers and contributors.
+The list of what Sonari changed is in the git history, module by module.
 
 ## License
 

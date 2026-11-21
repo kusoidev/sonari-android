@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-  namespace = "app.music.backend.sonari.paxsenix"
+  namespace = "app.music.backend.sonari.lyricsproviders"
   compileSdk = 37
 
   defaultConfig { minSdk = 26 }
@@ -26,10 +26,8 @@ dependencies {
   implementation(libs.ktor.serialization.json)
   implementation(libs.ktor.client.encoding)
   implementation(libs.timber)
-  testImplementation(libs.junit)
-
-  implementation(project(":BetterLyrics"))
   implementation(project(":Metadata"))
+  testImplementation(libs.junit)
 
   coreLibraryDesugaring(libs.desugaring)
 }
