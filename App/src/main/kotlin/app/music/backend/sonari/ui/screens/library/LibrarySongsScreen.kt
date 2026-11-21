@@ -43,9 +43,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -79,6 +80,8 @@ import app.music.backend.sonari.utils.listItemShape
 import app.music.backend.sonari.utils.rememberEnumPreference
 import app.music.backend.sonari.utils.rememberPreference
 import app.music.backend.sonari.viewmodels.LibrarySongsViewModel
+import kotlin.math.roundToInt
+import kotlin.random.Random
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -103,8 +106,10 @@ fun LibrarySongsScreen(
   val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
   val songs by viewModel.allSongs.collectAsState()
+  // The whole library, whatever the filter chips are showing. Shuffling plays this, not the subset.
+  val librarySongs by viewModel.librarySongs.collectAsState()
 
-  var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
+  var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIBRARY)
 
   var inSelectMode by rememberSaveable { mutableStateOf(false) }
   val selection = remember { mutableStateListOf<String>() }
@@ -125,8 +130,12 @@ fun LibrarySongsScreen(
   }
 
   val lazyListState = rememberLazyListState()
-  // While the roulette spins the wheel, frost the top and bottom of the screen smoothly.
-  val frostBlur = 10.dp * (roulette?.blurProgress ?: 0f)
+  // Where the roulette's needle sits and where the row it is aiming at is drawn — the two
+  // measurements the wheel needs to stop dead centre on that row.
+  val needleProbe = remember { ShuffleNeedleProbe() }
+  // While the wheel spins, the rows smear with speed. Quantised so the blur is only rebuilt a
+  // handful of times over the spin instead of on every frame.
+  val motionBlur = 8.dp * (((roulette?.speed ?: 0f) * 4f).roundToInt() / 4f)
 
   val backStackEntry by navController.currentBackStackEntryAsState()
   val scrollToTop =
@@ -148,22 +157,34 @@ fun LibrarySongsScreen(
 
   // The shuffle FAB lives next to the library's add button in LibraryScreen; it bumps the
   // roulette tick and this screen runs the wheel over whatever songs are on the list, then
-  // queues them shuffled with the winner first.
+  // queues the whole library shuffled with the winner first.
   val currentSongs by rememberUpdatedState(filteredSongs)
+  val currentLibrary by rememberUpdatedState(librarySongs)
   LaunchedEffect(roulette?.tick) {
     val state = roulette ?: return@LaunchedEffect
     if (state.tick == 0 || currentSongs.isEmpty()) return@LaunchedEffect
-    state.run(currentSongs) { winner ->
-      val queue = currentSongs.shuffled().toMutableList()
-      queue.remove(winner)
-      queue.add(0, winner)
-      playerConnection.playQueue(
-        ListQueue(
-          title = context.getString(R.string.queue_all_songs),
-          items = queue.map { it.toMediaItem() },
-        ),
-      )
-    }
+    val winnerRow = Random.nextInt(currentSongs.size)
+    val winner = currentSongs[winnerRow]
+    state.run(
+      listState = lazyListState,
+      probe = needleProbe,
+      rowCount = currentSongs.size,
+      winnerRow = winnerRow,
+      headerRows = 2, // the filter chips and the sort header
+      winnerId = winner.id,
+    )
+    val queue =
+      (currentLibrary.ifEmpty { currentSongs })
+        .shuffled()
+        .filter { it.id != winner.id }
+        .toMutableList()
+        .apply { add(0, winner) }
+    playerConnection.playQueue(
+      ListQueue(
+        title = context.getString(R.string.queue_all_songs),
+        items = queue.map { it.toMediaItem() },
+      ),
+    )
   }
 
   Box(
@@ -175,6 +196,9 @@ fun LibrarySongsScreen(
       LazyColumn(
         state = lazyListState,
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        modifier =
+          Modifier.fillMaxSize()
+            .then(if (motionBlur > 0.4.dp) Modifier.blur(motionBlur) else Modifier),
       ) {
         item(
           key = "filter",
@@ -182,7 +206,6 @@ fun LibrarySongsScreen(
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.then(if (frostBlur > 0.1.dp) Modifier.blur(frostBlur) else Modifier),
           ) {
             Spacer(Modifier.width(12.dp))
             FilterChip(
@@ -221,9 +244,7 @@ fun LibrarySongsScreen(
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier =
-              Modifier.padding(horizontal = 16.dp)
-                .then(if (frostBlur > 0.1.dp) Modifier.blur(frostBlur) else Modifier),
+            modifier = Modifier.padding(horizontal = 16.dp),
           ) {
             SortHeader(
               sortType = sortType,
@@ -263,6 +284,8 @@ fun LibrarySongsScreen(
             }
           }
           val isWinner = roulette != null && roulette.winnerSongId == song.id
+          // One row at a time reports its position: the one the wheel is aiming at.
+          val isTarget = roulette != null && roulette.targetSongId == song.id
           val winnerPulse by
             animateFloatAsState(
               targetValue = if (isWinner) 1.045f else 1f,
@@ -271,10 +294,21 @@ fun LibrarySongsScreen(
             )
           Box(
             modifier =
-              Modifier.fillMaxWidth().graphicsLayer {
-                scaleX = winnerPulse
-                scaleY = winnerPulse
-              }
+              Modifier.fillMaxWidth()
+                .graphicsLayer {
+                  scaleX = winnerPulse
+                  scaleY = winnerPulse
+                }
+                .then(
+                  if (isTarget) {
+                    Modifier.onGloballyPositioned { coords ->
+                      needleProbe.rowTopY = coords.positionInRoot().y
+                      needleProbe.rowHeight = coords.size.height.toFloat()
+                    }
+                  } else {
+                    Modifier
+                  }
+                )
           ) {
             SongListItem(
               song = song,
@@ -285,12 +319,6 @@ fun LibrarySongsScreen(
               showDownloadIcon = filter != SongFilter.DOWNLOADED,
               showSize = filter == SongFilter.DOWNLOADED,
               shape = listItemShape(index, filteredSongs.size),
-              color =
-                if (roulette != null && roulette.highlightSongId == song.id) {
-                  MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
-                } else {
-                  Color.Transparent
-                },
               trailingContent = {
                 if (inSelectMode) {
                   Checkbox(checked = selection.contains(song.id), onCheckedChange = onCheckedChange)
@@ -349,12 +377,14 @@ fun LibrarySongsScreen(
                   )
                   .animateItem(),
             )
-            roulette?.let { state -> ShuffleTrailOverlay(state, song.id, Modifier.matchParentSize()) }
           }
         }
       }
 
       roulette?.let { state -> ShuffleFrostOverlay(state, Modifier.matchParentSize()) }
+      roulette?.let { state ->
+        ShuffleNeedleOverlay(state, needleProbe, Modifier.align(Alignment.Center))
+      }
 
       androidx.compose.animation.AnimatedVisibility(
         visible = inSelectMode,

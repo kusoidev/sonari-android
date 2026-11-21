@@ -88,7 +88,7 @@ constructor(
               } catch (e: Exception) {
                 null
               })
-              .toEnum(SongFilter.LIKED),
+              .toEnum(SongFilter.LIBRARY),
             (try {
                 it[SongSortTypeKey]
               } catch (e: Exception) {
@@ -150,6 +150,17 @@ constructor(
         }
       }
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+  /**
+   * Every song the app knows about, newest first, whatever the filter chips are showing. The
+   * library shuffle plays this rather than the subset that happens to be on screen.
+   */
+  val librarySongs =
+    database.allSongs(SongSortType.CREATE_DATE, true).stateIn(
+      viewModelScope,
+      SharingStarted.Lazily,
+      emptyList(),
+    )
 
   fun syncLikedSongs() {
     viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }
