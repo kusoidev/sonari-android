@@ -694,9 +694,11 @@ fun Lyrics(
             previous += consumed
             if (consumed != 0f) {
               for (visible in lazyListState.layoutInfo.visibleItemsInfo) {
-                // every row but the one being pulled, above the line as well as below: the lines
-                // already sung trail off the top on the same wave as the ones still to come
-                if (visible.index != lookUpIndex) ripple.holdBack(visible.index, consumed)
+                // The sung line is not welded to the scroll either: it takes a share of the travel
+                // as lag and rides its own stiff spring in, so it glides into the middle instead of
+                // arriving rigid while every row around it waves.
+                if (visible.index == lookUpIndex) ripple.holdBack(visible.index, consumed * 0.35f)
+                else ripple.holdBack(visible.index, consumed)
               }
             }
           }

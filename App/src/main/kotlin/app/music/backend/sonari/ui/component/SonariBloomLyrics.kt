@@ -143,7 +143,7 @@ fun sonariBloomLine(
   val animatedAlpha by
     animateFloatAsState(
       targetValue = targetAlpha,
-      animationSpec = tween(durationMillis = 300),
+      animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessLow),
       label = "bloomLineAlpha"
     )
 
@@ -186,7 +186,7 @@ fun sonariBloomLine(
   val scale by
     animateFloatAsState(
       targetValue = if (isActive) 1.05f else 1f,
-      animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
+      animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow),
       label = "bloomLineScale"
     )
 
