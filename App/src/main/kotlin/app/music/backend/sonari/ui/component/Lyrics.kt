@@ -658,6 +658,12 @@ fun Lyrics(
     }
   }
 
+  // Rows below the sung line trail the scroll and catch up one by one, so a line change lands as
+  // a wave travelling out from the middle rather than as every row jumping together.
+  val lyricsHeaderItems = if (isLyricsProviderShown) 1 else 0
+  val ripple = remember(lines.size) { LyricsRipple(lines.size + lyricsHeaderItems + 2) }
+  LaunchedEffect(ripple) { ripple.run() }
+
   suspend fun performSmoothPageScroll(targetIndex: Int, duration: Int = 1500) {
     val lookUpIndex = if (isLyricsProviderShown) targetIndex + 1 else targetIndex
     val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == lookUpIndex }
@@ -672,12 +678,27 @@ fun Lyrics(
       if (kotlin.math.abs(offset) > 10) {
         // One eased slide of a known length (the model Mochy Music uses): it starts smoothly,
         // keeps a constant sense of travel and settles exactly on the line, where a very soft
-        // spring hangs in the air and reads as a drift rather than a move.
-        lazyListState.animateScrollBy(
-          value = offset.toFloat(),
-          animationSpec =
-            tween(durationMillis = 950, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))
-        )
+        // spring hangs in the air and reads as a drift rather than a move. Scrolling by hand
+        // rather than animateScrollBy, because the amount each frame actually moved is what the
+        // rows below are held back by.
+        ripple.anchorRow = lookUpIndex
+        lazyListState.scroll {
+          var previous = 0f
+          androidx.compose.animation.core.animate(
+            initialValue = 0f,
+            targetValue = offset.toFloat(),
+            animationSpec =
+              tween(durationMillis = 950, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))
+          ) { value, _ ->
+            val consumed = scrollBy(value - previous)
+            previous += consumed
+            if (consumed != 0f) {
+              for (visible in lazyListState.layoutInfo.visibleItemsInfo) {
+                if (visible.index > lookUpIndex) ripple.holdBack(visible.index, consumed)
+              }
+            }
+          }
+        }
       }
     } else {
       lazyListState.scrollToItem(targetIndex)
@@ -946,6 +967,11 @@ fun Lyrics(
                 isSynced = isSynced,
                 isActive = isActiveByIndex || isActiveByTime,
                 distanceFromCurrent = kotlin.math.abs(index - displayedCurrentLineIndex),
+                // the row below the sung one trails the scroll, then catches up on its own
+                modifier =
+                  Modifier.graphicsLayer {
+                    translationY = ripple.lagOf(index + lyricsHeaderItems)
+                  },
                 lyricsTextPosition = lyricsTextPosition,
                 textColor = textColor,
                 showRomanized =
@@ -1120,6 +1146,7 @@ fun Lyrics(
 
             val itemModifier =
               Modifier.fillMaxWidth()
+                .graphicsLayer { translationY = ripple.lagOf(index + lyricsHeaderItems) }
                 .clip(cornerShape)
                 .combinedClickable(
                   enabled = true,

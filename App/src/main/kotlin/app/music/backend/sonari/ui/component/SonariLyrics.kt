@@ -1,6 +1,8 @@
 package app.music.backend.sonari.ui.component
 
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -133,12 +135,23 @@ fun sonariLyricsLine(
       label = "lineBlur"
     )
 
+  // Waiting lines sit a touch below their place and are pulled up into it, the sung one with a
+  // small overshoot that settles - a fast-moving thing easing to a stop rather than stopping.
+  val lineRise by
+    animateFloatAsState(
+      targetValue = if (isActive) 1f else 0f,
+      animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessLow),
+      label = "lineRise"
+    )
+
   val scale by
     animateFloatAsState(
       targetValue = if (isActive) 1.05f else 1f,
-      animationSpec = tween(durationMillis = 400),
+      animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
       label = "lineScale"
     )
+
+  val waitDropPx = with(LocalDensity.current) { 3.dp.toPx() }
 
   val itemModifier =
     modifier
@@ -147,6 +160,7 @@ fun sonariLyricsLine(
         this.alpha = animatedAlpha
         this.scaleX = scale
         this.scaleY = scale
+        this.translationY = (1f - lineRise) * waitDropPx
       }
       .blur(animatedBlur.dp)
       .clip(RoundedCornerShape(16.dp))
@@ -219,6 +233,15 @@ fun sonariLyricsLine(
             label = "wordProgress"
           )
 
+        // Each word is lifted into place as the sweep reaches it, on its own spring, so the rise
+        // travels through the line word by word instead of the whole row arriving at once.
+        val rise by
+          animateFloatAsState(
+            targetValue = if (lineRelTime >= startRelative) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+            label = "wordRise"
+          )
+
         // One weight for every word, pass and pending: a heavier active word re-measured the row
         // under the sweep and nudged every word after it sideways.
         val finalFontWeight = FontWeight.Bold
@@ -226,6 +249,17 @@ fun sonariLyricsLine(
         Text(
           text = wordText,
           fontSize = textSize.sp,
+          modifier =
+            Modifier.graphicsLayer {
+              // the word at the head of the sweep swells a little and sits back down as it lands
+              val swell =
+                if (progress > 0f && progress < 1f) {
+                  kotlin.math.sin(progress * kotlin.math.PI.toFloat()) * 0.045f
+                } else 0f
+              translationY = (1f - rise) * waitDropPx - swell * waitDropPx
+              scaleX = 1f + swell
+              scaleY = 1f + swell
+            },
           style =
             TextStyle(
               brush =
