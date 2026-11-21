@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,13 +43,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -75,6 +81,7 @@ import app.music.backend.sonari.utils.listItemShape
 import app.music.backend.sonari.utils.rememberEnumPreference
 import app.music.backend.sonari.utils.rememberPreference
 import app.music.backend.sonari.viewmodels.LibrarySongsViewModel
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -124,6 +131,10 @@ fun LibrarySongsScreen(
   }
 
   val lazyListState = rememberLazyListState()
+  // Where the list starts on screen. The wheel is centred in the list area, which sits well below
+  // the middle of the screen, so it is shifted up by half this distance to sit dead centre.
+  var listTopPx by remember { mutableFloatStateOf(0f) }
+  val centreOnScreen = { IntOffset(0, -(listTopPx / 2f).roundToInt()) }
 
   val backStackEntry by navController.currentBackStackEntryAsState()
   val scrollToTop =
@@ -240,7 +251,13 @@ fun LibrarySongsScreen(
         }
       }
 
-      Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+      Box(
+        modifier =
+          Modifier.fillMaxWidth()
+            .weight(1f)
+            .clipToBounds()
+            .onGloballyPositioned { listTopPx = it.positionInRoot().y }
+      ) {
         LazyColumn(
           state = lazyListState,
           contentPadding = PaddingValues(bottom = listInsets.calculateBottomPadding()),
@@ -335,9 +352,15 @@ fun LibrarySongsScreen(
           }
         }
 
-        roulette?.let { state -> ShuffleWheel(state, Modifier.matchParentSize()) }
-        roulette?.let { state -> ShuffleNeedleOverlay(state, Modifier.matchParentSize()) }
-        roulette?.let { state -> ShuffleConfetti(state, Modifier.matchParentSize()) }
+        roulette?.let { state ->
+          ShuffleWheel(state, Modifier.matchParentSize().offset { centreOnScreen() })
+        }
+        roulette?.let { state ->
+          ShuffleNeedleOverlay(state, Modifier.matchParentSize().offset { centreOnScreen() })
+        }
+        roulette?.let { state ->
+          ShuffleConfetti(state, Modifier.matchParentSize().offset { centreOnScreen() })
+        }
       }
     }
 
