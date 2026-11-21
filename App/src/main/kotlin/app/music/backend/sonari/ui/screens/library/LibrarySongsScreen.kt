@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,7 +64,6 @@ import app.music.backend.sonari.constants.YtmSyncKey
 import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.ui.component.ChipsRow
-import app.music.backend.sonari.ui.component.HideOnScrollFAB
 import app.music.backend.sonari.ui.component.LocalMenuState
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
@@ -80,6 +80,7 @@ fun LibrarySongsScreen(
   navController: NavController,
   onDeselect: () -> Unit,
   viewModel: LibrarySongsViewModel = hiltViewModel(),
+  roulette: ShuffleRouletteState? = null,
 ) {
   val context = LocalContext.current
   val menuState = LocalMenuState.current
@@ -136,6 +137,20 @@ fun LibrarySongsScreen(
     } else {
       songs
     }
+
+  // The shuffle FAB lives next to the library's add button in LibraryScreen; it bumps the
+  // roulette tick and this screen reacts with whatever songs are currently on the list.
+  val currentSongs by rememberUpdatedState(filteredSongs)
+  LaunchedEffect(roulette?.tick) {
+    val state = roulette ?: return@LaunchedEffect
+    if (state.tick == 0 || currentSongs.isEmpty()) return@LaunchedEffect
+    playerConnection.playQueue(
+      ListQueue(
+        title = context.getString(R.string.queue_all_songs),
+        items = currentSongs.shuffled().map { it.toMediaItem() },
+      ),
+    )
+  }
 
   Box(
     modifier = Modifier.fillMaxSize(),
@@ -347,20 +362,6 @@ fun LibrarySongsScreen(
           windowInsets = WindowInsets(0.dp)
         )
       }
-
-      HideOnScrollFAB(
-        visible = filteredSongs.isNotEmpty(),
-        lazyListState = lazyListState,
-        icon = R.drawable.shuffle,
-        onClick = {
-          playerConnection.playQueue(
-            ListQueue(
-              title = context.getString(R.string.queue_all_songs),
-              items = filteredSongs.shuffled().map { it.toMediaItem() },
-            ),
-          )
-        },
-      )
     }
   }
 }

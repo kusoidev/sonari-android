@@ -133,6 +133,7 @@ fun LibraryScreen(navController: NavController) {
     }
 
   CompositionLocalProvider(LocalPlayerAwareWindowInsets provides newInsets) {
+    val shuffleRoulette = remember { ShuffleRouletteState() }
     // The "+" used to float permanently over the library, sitting on top of the tiles and cards.
     // It now tucks itself away while you scroll down, comes back as soon as you scroll up, and
     // returns on its own when the list comes to rest.
@@ -182,7 +183,11 @@ fun LibraryScreen(navController: NavController) {
         LibraryFilter.LIBRARY -> LibraryHomeScreen(navController, filterContent)
         LibraryFilter.PLAYLISTS -> LibraryPlaylistsScreen(navController, filterContent)
         LibraryFilter.SONGS ->
-          LibrarySongsScreen(navController, { filterType = LibraryFilter.LIBRARY })
+          LibrarySongsScreen(
+            navController,
+            { filterType = LibraryFilter.LIBRARY },
+            roulette = shuffleRoulette,
+          )
         LibraryFilter.ALBUMS ->
           LibraryAlbumsScreen(navController, { filterType = LibraryFilter.LIBRARY })
         LibraryFilter.ARTISTS ->
@@ -202,7 +207,9 @@ fun LibraryScreen(navController: NavController) {
 
       val bottomPadding = with(density) { currentInsets.getBottom(density).toDp() }
       Box(modifier = Modifier.fillMaxSize().padding(end = 16.dp, bottom = bottomPadding + 20.dp)) {
-        Box(
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+          verticalAlignment = Alignment.CenterVertically,
           modifier =
             Modifier.align(Alignment.BottomEnd)
               .offset(y = fabSlide)
@@ -212,6 +219,18 @@ fun LibraryScreen(navController: NavController) {
                 scaleY = fabScale
               }
         ) {
+          // Shuffle sits right next to the add button and tucks away with the exact same
+          // scroll logic; it only makes sense where a song list is on screen.
+          if (filterType == LibraryFilter.SONGS) {
+            androidx.compose.material3.FloatingActionButton(
+              onClick = { if (fabVisible) shuffleRoulette.begin() },
+              shape = CircleShape,
+              containerColor = MaterialTheme.colorScheme.onSurface,
+              contentColor = MaterialTheme.colorScheme.surface
+            ) {
+              Icon(painter = painterResource(R.drawable.shuffle), contentDescription = stringResource(R.string.shuffle))
+            }
+          }
           androidx.compose.material3.FloatingActionButton(
             onClick = { if (fabVisible) showFabMenu = true },
             shape = CircleShape,
