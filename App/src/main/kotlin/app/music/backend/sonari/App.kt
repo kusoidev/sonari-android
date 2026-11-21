@@ -204,6 +204,18 @@ class App : Application(), SingletonImageLoader.Factory {
         app.music.backend.sonari.constants.PlaybackEngine.AUTO
       }
 
+    // The lyrics page animates in the Sonari (Mochy-derived) style only now, so a style left
+    // behind by an older build is moved onto it once. A Metro pick is a deliberate choice, kept.
+    if (settings[LyricsMotionPortMigratedKey] != true) {
+      val stored =
+        settings[LyricsAnimationStyleKey].toEnum(defaultValue = LyricsAnimationStyle.sonari_1)
+      val keep = stored == LyricsAnimationStyle.sonari_1 || stored == LyricsAnimationStyle.METRO_LYRICS
+      dataStore.edit { prefs ->
+        prefs[LyricsMotionPortMigratedKey] = true
+        if (!keep) prefs[LyricsAnimationStyleKey] = LyricsAnimationStyle.sonari_1.name
+      }
+    }
+
     val channel =
       NotificationChannel(
           "updates",

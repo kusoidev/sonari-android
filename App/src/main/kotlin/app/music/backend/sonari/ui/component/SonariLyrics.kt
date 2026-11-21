@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -114,9 +115,27 @@ fun sonariLyricsLine(
       label = "lineAlpha"
     )
 
+  // Lines come in and out of focus instead of jumping between alphas, and the sung line grows a
+  // touch: the two together are what makes the page read as one continuous motion.
+  val targetBlur =
+    when {
+      !isSynced || isActive || isSelectionModeActive -> 0f
+      distanceFromCurrent <= 2 -> 0f
+      distanceFromCurrent == 3 -> 2f
+      distanceFromCurrent == 4 -> 4f
+      else -> 6f
+    }
+
+  val animatedBlur by
+    animateFloatAsState(
+      targetValue = targetBlur,
+      animationSpec = tween(durationMillis = 1000),
+      label = "lineBlur"
+    )
+
   val scale by
     animateFloatAsState(
-      targetValue = if (isActive) 1f else 0.85f,
+      targetValue = if (isActive) 1.05f else 1f,
       animationSpec = tween(durationMillis = 400),
       label = "lineScale"
     )
@@ -129,6 +148,7 @@ fun sonariLyricsLine(
         this.scaleX = scale
         this.scaleY = scale
       }
+      .blur(animatedBlur.dp)
       .clip(RoundedCornerShape(16.dp))
       .combinedClickable(enabled = true, onClick = onClick, onLongClick = onLongClick)
       .background(
@@ -199,7 +219,9 @@ fun sonariLyricsLine(
             label = "wordProgress"
           )
 
-        val finalFontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold
+        // One weight for every word, pass and pending: a heavier active word re-measured the row
+        // under the sweep and nudged every word after it sideways.
+        val finalFontWeight = FontWeight.Bold
 
         Text(
           text = wordText,

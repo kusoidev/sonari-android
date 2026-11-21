@@ -539,6 +539,9 @@ val HideStatusBarOnFullscreenKey = booleanPreferencesKey("hideStatusBarOnFullscr
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
 
+/** Set once the stored lyrics style has been moved onto the Sonari renderer. */
+val LyricsMotionPortMigratedKey = booleanPreferencesKey("lyricsMotionPortMigrated")
+
 enum class LyricsAnimationStyle {
   NONE,
   FADE,

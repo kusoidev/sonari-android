@@ -927,10 +927,10 @@ fun Lyrics(
           itemsIndexed(items = lines, key = { index, item -> "$index-${item.time}" }) { index, item
             ->
             val isSelected = selectedIndices.contains(index)
-            if (
-              lyricsAnimationStyle == LyricsAnimationStyle.sonari_1 &&
-                item.words?.isNotEmpty() == true
-            ) {
+            // Every line goes through the Sonari renderer, not just the ones a provider shipped
+            // word timings for: it synthesises them from the text when they are missing, which is
+            // what keeps a plain LRC file sweeping word by word.
+            if (lyricsAnimationStyle == LyricsAnimationStyle.sonari_1) {
               val currentLineTime =
                 if (displayedCurrentLineIndex >= 0 && displayedCurrentLineIndex < lines.size) {
                   lines[displayedCurrentLineIndex].time
