@@ -1,5 +1,6 @@
 package app.music.backend.sonari.ui.component
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -161,6 +163,19 @@ fun sonariBloomLine(
       label = "bloomLineBlur"
     )
 
+  // A line arrives as the sung one in a wave through its own words rather than switching state,
+  // the same follow-through the rows below it get. Each word waits a little longer than the one
+  // before it for the light to reach it.
+  val arrival = remember { Animatable(1f) }
+  LaunchedEffect(isActive) {
+    if (isActive) {
+      arrival.snapTo(0f)
+      arrival.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow))
+    } else {
+      arrival.snapTo(1f)
+    }
+  }
+
   val lineRise by
     animateFloatAsState(
       targetValue = if (isActive) 1f else 0f,
@@ -256,6 +271,11 @@ fun sonariBloomLine(
 
         val lineRelTime = (effectivePlaybackPosition - entry.time).coerceAtLeast(0L)
 
+        // how far the arrival wave has reached this word: 1 once settled, less while it waits behind
+        // the words before it
+        val lead =
+          (arrival.value * (1f + words.size * 0.12f) - wordIndex * 0.12f).coerceIn(0f, 1f)
+
         // the word's own head, so its light can follow whatever letter is being sung inside it
         val wordSwell =
           if (lineRelTime in word.start..word.end && word.end > word.start) {
@@ -302,13 +322,14 @@ fun sonariBloomLine(
               fontSize = textSize.sp,
               modifier =
                 Modifier.graphicsLayer {
-                  translationY = (1f - rise) * waitDropPx - swell * liftPx
+                  translationY =
+                    (1f - rise) * waitDropPx - swell * liftPx + (1f - lead) * waitDropPx
                   scaleX = 1f + swell * LetterSwell
                   scaleY = 1f + swell * LetterSwell
                 },
               style =
                 TextStyle(
-                  color = textColor.copy(alpha = 0.42f + 0.58f * rise),
+                  color = textColor.copy(alpha = (0.42f + 0.58f * rise) * (0.55f + 0.45f * lead)),
                   fontWeight = FontWeight.Bold,
                   lineHeight = letterHeight,
                   textAlign = agentTextAlign,
