@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -344,9 +345,10 @@ fun BoxScope.ShuffleNeedleOverlay(
 
 @Composable
 private fun NeedleArrow(speed: Float, phase: Float, pointsRight: Boolean) {
-  // A struck bar rather than a buzz: one knock as a row goes by, then a damped settle that dies
-  // away on its own. The harder the wheel turns, the harder the knock.
-  val ring = exp(-3.2f * phase) * cos(5f * PI.toFloat() * phase)
+  // A filled, rounded play wedge like a real struck indicator, themed with the app's accent, and
+  // both sides driven by the same wrapped beat so they knock together instead of one going dead.
+  val beat = phase - kotlin.math.floor(phase)
+  val ring = exp(-3.2f * beat) * cos(5f * PI.toFloat() * beat)
   val hit = (ring * speed).coerceIn(-1f, 1f)
   val outward = if (pointsRight) -1f else 1f
   val tint = MaterialTheme.colorScheme.primary
@@ -355,27 +357,43 @@ private fun NeedleArrow(speed: Float, phase: Float, pointsRight: Boolean) {
   Canvas(
     modifier =
       Modifier.size(26.dp).graphicsLayer {
-        rotationZ = hit * 5f
-        translationX = outward * hit * 7.dp.toPx()
-        translationY = hit * 2.dp.toPx()
-        scaleX = mirror * (1f + 0.10f * abs(hit))
-        scaleY = 1f - 0.06f * abs(hit)
+        rotationZ = hit * 4f
+        translationX = outward * hit * 6.dp.toPx()
+        translationY = hit * 1.5f.dp.toPx()
+        scaleX = mirror * (1f + 0.09f * abs(hit))
+        scaleY = 1f - 0.05f * abs(hit)
       },
   ) {
-    val stroke = size.minDimension * 0.14f
-    val inset = size.minDimension * 0.2f
-    val chevron =
-      Path().apply {
-        moveTo(inset, size.height * 0.1f)
-        lineTo(size.width - inset, size.height * 0.5f)
-        lineTo(inset, size.height * 0.9f)
-      }
-    drawPath(
-      path = chevron,
-      color = tint,
-      style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
-    )
+    val corner = size.minDimension * 0.22f
+    val left = size.width * 0.16f
+    val top = size.height * 0.06f
+    val bottom = size.height * 0.94f
+    val tip = Offset(size.width * 0.95f, size.height * 0.5f)
+    val path = Path()
+    // Two rounded corners on the flat side, one on the tip: the wedge in the reference image.
+    val a = Offset(left, top)
+    val b = Offset(left, bottom)
+    val abEdge = (b - a).normalized()
+    val baEdge = (a - b).normalized()
+    val aTip = (tip - a).normalized()
+    val bTip = (tip - b).normalized()
+
+    path.moveTo((a + abEdge * corner).x, (a + abEdge * corner).y)
+    path.lineTo((b + baEdge * corner).x, (b + baEdge * corner).y)
+    path.quadraticBezierTo(b.x, b.y, (b + bTip * corner).x, (b + bTip * corner).y)
+    path.lineTo((tip + bTip * corner).x, (tip + bTip * corner).y)
+    path.quadraticBezierTo(tip.x, tip.y, (tip + aTip * corner).x, (tip + aTip * corner).y)
+    path.lineTo((a + aTip * corner).x, (a + aTip * corner).y)
+    path.quadraticBezierTo(a.x, a.y, (a + abEdge * corner).x, (a + abEdge * corner).y)
+    path.close()
+
+    drawPath(path = path, color = tint)
   }
+}
+
+private fun Offset.normalized(): Offset {
+  val length = kotlin.math.sqrt(x * x + y * y)
+  return if (length <= 0.0001f) Offset.Zero else Offset(x / length, y / length)
 }
 
 /** A burst of confetti out of the middle of the wheel once it has stopped on a song. */
