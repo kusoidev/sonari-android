@@ -1,0 +1,6 @@
+{
+  global:
+    Java_app_music_backend_sonari_recognition_VibraSignature_*;
+  local:
+    *;
+};
