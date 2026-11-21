@@ -52,7 +52,7 @@ the agent full context without re-scanning the whole codebase every session.
 >    before staging. If a script is genuinely reusable project tooling, move
 >    it to `scripts/` with a clear name and docstring; otherwise delete it.
 > 2. **Verify the build is clean.** Run
->    `./gradlew :app:compileUniversalGmsDebugKotlin` and confirm
+>    `./gradlew :App:compileUniversalGmsDebugKotlin` and confirm
 >    `BUILD SUCCESSFUL` with no errors before committing.
 > 3. **Write a proper commit message.** Title + body in Conventional Commits
 >    format (see "Commit message format" section below).
@@ -140,26 +140,35 @@ Package/namespace: `app.music.backend.sonari` (app module). Application ID match
 
 ## Module map (multi-module Gradle project)
 
-Root `:app` depends on all of these library modules — each is a focused,
-mostly-independent feature/integration:
+Twelve modules. `:App` depends on all the library modules; the libraries only
+depend on each other where noted, so the graph stays acyclic.
 
-| Module | Purpose |
-|---|---|
-| `:app` | Main application — UI, ViewModels, MusicService, DB, DI, app-level orchestration |
-| `:core` | Shared models, constants, Room database, DataStore, and common utilities |
-| `:playback` | Pure ExoPlayer/Media3 logic — Queues, Equalizer, ChunkingDataSource, SleepTimer, BeatAnalyzer |
-| `:lyrics` | Lyrics orchestration — LyricsHelper, LyricsEntry, LyricsUtils, all provider impls, AI translation |
-| `:innertube` | YouTube Music InnerTube API client (the core music source) |
-| `:kugou`, `:lrclib`, `:betterlyrics`, `:youlyplus`, `:paxsenixlyrics`, `:simpmusic` | Individual lyrics source providers (each consumed by `:lyrics`) |
-| `:shazamkit` | Music recognition ("Sonari Find") |
-| `:canvas`, `:sonaricanvas`, `:applecanvas` | Canvas-style looping video backgrounds for tracks (different providers) |
-| `:artistvideo` | Artist video features |
-| `:unison` | Cross-cutting shared utility module (check source before editing) |
+| Module | Purpose | Depends on |
+|---|---|---|
+| `:App` | Main application — UI, ViewModels, MusicService, DB, DI, app-level orchestration | everything |
+| `:Core` | Shared models, constants, Room database, DataStore, repositories, common utilities | `:Innertube`, `:Metadata`, `:Domain` |
+| `:Domain` | Pure domain layer — models, repository interfaces, use cases | — |
+| `:Metadata` | Track metadata cleaning and version detection shared by the network modules | — |
+| `:Playback` | Media3 logic — queues, `ChunkingDataSource`, `SleepTimer`, audio sink selection, beat analysis | `:Core`, `:AudioDsp`, `:UsbAudio` |
+| `:AudioDsp` | Audio processors, `DspController`, and the biquad / parametric EQ core they run on | — |
+| `:UsbAudio` | USB DAC output: descriptors, bit-perfect PCM, volume modes | — |
+| `:Lyrics` | Lyrics orchestration — helpers, entries, provider wrappers, AI translation | `:Core`, `:Innertube`, `:LyricsProviders` |
+| `:LyricsProviders` | Every external lyrics source, one package each (LrcLib, Kugou, BetterLyrics, SimpMusic, Paxsenix, YouLyPlus) | `:Metadata` |
+| `:Innertube` | YouTube Music InnerTube API client (the core music source) | `:Metadata` |
+| `:Canvas` | Animated artwork backgrounds and video: Tidal, Apple Music and Sonari providers plus the artist video surface | — |
+| `:ShazamKit` | Music recognition ("Sonari Find") | — |
 
-When adding a new external integration (a new lyrics source, a new canvas
-provider, etc.), the existing pattern is: **new Gradle module**, register it
-in `settings.gradle.kts`, add it as an `implementation(project(":name"))` in
-`app/build.gradle.kts`, wire it up via Hilt in `di/`.
+Source packages keep their own names, so a module can hold more than one
+package group: `:Canvas` owns `canvas/` with `apple/`, `sonari/` and `video/`
+under it; `:AudioDsp` owns `dsp/audio`, `dsp/controller`, `dsp/core`,
+`dsp/data` and `dsp/di`.
+
+When adding a new external integration, prefer growing the module that already
+owns that concern — a new lyrics source is a package inside `:LyricsProviders`,
+a new artwork/video provider is a package inside `:Canvas` — and only create a
+new Gradle module for something genuinely separate: register it in
+`settings.gradle.kts`, add it as `implementation(project(":Name"))` in
+`App/build.gradle.kts`, and wire it up via Hilt in `di/`.
 
 ## App module internal structure
 
@@ -213,6 +222,33 @@ widget/         Home-screen widget
   (spec `SPEC_2025`, style `TonalSpot`). See `ui/theme/Theme.kt`.
   A custom "pure black" dark mode variant is supported.
   Users can override the seed color from settings.
+- **Auto/dynamic theme consistency:** when auto theme is enabled,
+  `MainActivity` must derive both the app seed color and app background
+  gradient through `PlayerColorExtractor.extractGradientColors()` using the
+  same 100x100 artwork bitmap / 8-color palette pipeline as `Player` and
+  `MiniPlayer`. Do not reintroduce a separate `Score`-based extractor for
+  the app shell, or the app and player will pick different colors from the
+  same artwork.
+- **Library "All" auto-playlist:** `auto_playlist/all` combines
+  `DatabaseDao.allSongs` with the Media3 download index so active/completed
+  downloads appear even when the persisted `isDownloaded` flag is stale.
+  `allSongs*` queries also accept `dateDownload IS NOT NULL` for the same
+  reason.
+- **Player action mitosis:** the new-player header’s like button and the
+  fullscreen + lyrics-menu pair animate as one group via a spring-driven
+  `updateTransition` inside `Player.kt`. A `Canvas` membrane behind the
+  buttons stretches, pinches to a zero-width neck, and separates them (and
+  merges in reverse), while the group width follows the same split progress so
+  the title row reflows smoothly. Keep the membrane path and button offsets
+  driven by the same motion value if tuning it.
+- **Ambient header blur:** playlist headers (auto/online/Spotify) render
+  `OnlineBlur` as a screen-root layer anchored at y=0 and sized from the
+  header's measured height, translated by the list's scroll offset. Do not put
+  the blur back inside the `LazyColumn` header and offset it upward using
+  `WindowInsets`: that can leave the status-bar strip unblurred on the first
+  frames. Keep `OnlineBlur` immediate (no long alpha/crossfade) and keep the
+  root `NavHost` crossfade — sliding fully opaque screens over each other makes
+  the overlap look much worse.
 - Adaptive layouts (`androidx.compose.material3.adaptive`) are used —
   design new screens to work across phone/tablet/foldable widths.
   A "floating tab bar" custom component exists at
@@ -319,12 +355,12 @@ A 4-tier test suite covers database migrations, scoring algorithms, repository p
 
 Run tests with:
 ```bash
-./gradlew :core:testDebugUnitTest :app:testUniversalGmsDebugUnitTest
+./gradlew :Core:testDebugUnitTest :App:testUniversalGmsDebugUnitTest
 ```
 
 ## CI
 
-- `.github/workflows/android-build.yml` — runs `:core:testDebugUnitTest :app:testUniversalGmsDebugUnitTest` unit tests before assembling APK artifacts.
+- `.github/workflows/android-build.yml` — runs `:core:testDebugUnitTest :App:testUniversalGmsDebugUnitTest` unit tests before assembling APK artifacts.
 - `.github/workflows/codeql.yml` — static analysis / security scanning.
 
 ## Local Taste Engine

@@ -18,28 +18,18 @@ dependencyResolutionManagement {
 
 rootProject.name = "sonari"
 include(
-    ":app",
-    ":innertube",
-    ":paxsenixlyrics",
-    ":kugou",
-    ":betterlyrics",
-    ":lrclib",
-    ":simpmusic",
-    ":youlyplus",
-    ":shazamkit",
-    ":artistvideo",
-    ":canvas",
-    ":sonaricanvas",
-    ":applecanvas",
-    ":unison",
-    ":core",
-    ":lyrics",
-    ":playback",
-    ":usbaudio",
-    ":metadata",
-    ":dsp-core",
-    ":audio-dsp",
-    ":domain"
+    ":App",
+    ":Innertube",
+    ":ShazamKit",
+    ":Canvas",
+    ":Core",
+    ":Lyrics",
+    ":LyricsProviders",
+    ":Playback",
+    ":UsbAudio",
+    ":Metadata",
+    ":AudioDsp",
+    ":Domain"
 )
 
 

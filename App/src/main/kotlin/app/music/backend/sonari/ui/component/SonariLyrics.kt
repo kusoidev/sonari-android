@@ -1,0 +1,388 @@
+package app.music.backend.sonari.ui.component
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.music.backend.sonari.lyrics.LyricsEntry
+import app.music.backend.sonari.ui.screens.settings.LyricsPosition
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun sonariLyricsLine(
+  entry: LyricsEntry,
+  nextEntryTime: Long?,
+  effectivePlaybackPosition: Long,
+  isSynced: Boolean,
+  isActive: Boolean,
+  distanceFromCurrent: Int,
+  lyricsTextPosition: LyricsPosition,
+  textColor: Color,
+  showRomanized: Boolean,
+  showTranslated: Boolean,
+  textSize: Float,
+  lineSpacing: Float,
+  onClick: () -> Unit,
+  onLongClick: () -> Unit,
+  isSelected: Boolean,
+  isSelectionModeActive: Boolean,
+  isAutoScrollActive: Boolean,
+  expressiveAccent: Color,
+  modifier: Modifier = Modifier,
+  /** The letter-by-letter renderer: the same motion one character at a time, with a bloom. */
+  letterByLetter: Boolean = false
+) {
+
+  // The two Sonari styles differ only in how finely the line is cut up, so one entry point picks.
+  if (letterByLetter) {
+    sonariBloomLine(
+      entry = entry,
+      nextEntryTime = nextEntryTime,
+      effectivePlaybackPosition = effectivePlaybackPosition,
+      isSynced = isSynced,
+      isActive = isActive,
+      distanceFromCurrent = distanceFromCurrent,
+      lyricsTextPosition = lyricsTextPosition,
+      textColor = textColor,
+      showRomanized = showRomanized,
+      showTranslated = showTranslated,
+      textSize = textSize,
+      lineSpacing = lineSpacing,
+      onClick = onClick,
+      onLongClick = onLongClick,
+      isSelected = isSelected,
+      isSelectionModeActive = isSelectionModeActive,
+      isAutoScrollActive = isAutoScrollActive,
+      expressiveAccent = expressiveAccent,
+      modifier = modifier
+    )
+    return
+  }
+
+  val duration =
+    remember(entry.time, nextEntryTime) {
+      if (nextEntryTime != null) nextEntryTime - entry.time else 4000L
+    }
+
+  val activeDuration = remember(duration) { (duration * 0.95).toLong().coerceAtLeast(300L) }
+
+  val wordData =
+    remember(entry.text, entry.words, activeDuration) {
+      val isHindiText = app.music.backend.sonari.lyrics.LyricsUtils.isHindi(entry.text)
+      if (!isHindiText && entry.words?.isNotEmpty() == true) {
+
+        entry.words!!.mapIndexed { index, word ->
+          val wordStart = ((word.startTime * 1000).toLong() - entry.time).coerceAtLeast(0L)
+          val wordEnd = ((word.endTime * 1000).toLong() - entry.time).coerceAtLeast(wordStart + 50L)
+          Triple(word.text, wordStart, wordEnd)
+        }
+      } else {
+
+        val words = entry.text.split(" ").filter { it.isNotEmpty() }
+        if (words.isEmpty()) {
+          listOf(Triple(entry.text, 0L, activeDuration))
+        } else {
+          val totalChars = entry.text.length
+          var accumulatedTime = 0L
+          words.mapIndexed { index, word ->
+            val wordLength = word.length
+            val includeSpace = index < words.size - 1
+            val charCount = if (includeSpace) wordLength + 1 else wordLength
+            val wordStart = accumulatedTime
+            val wordDur =
+              if (totalChars > 0) (activeDuration * charCount.toFloat() / totalChars).toLong()
+              else activeDuration
+            val wordEnd = wordStart + wordDur
+            accumulatedTime += wordDur
+            Triple(word, wordStart, wordEnd)
+          }
+        }
+      }
+    }
+
+  val targetAlpha =
+    when {
+      !isSynced || (isSelectionModeActive && isSelected) -> 1f
+      isActive -> 1f
+      distanceFromCurrent == 1 -> 0.65f
+      distanceFromCurrent == 2 -> 0.45f
+      else -> 0.35f
+    }
+
+  val animatedAlpha by
+    animateFloatAsState(
+      targetValue = targetAlpha,
+      animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessLow),
+      label = "lineAlpha"
+    )
+
+  // Lines come in and out of focus instead of jumping between alphas, and the sung line grows a
+  // touch: the two together are what makes the page read as one continuous motion.
+  val targetBlur =
+    when {
+      !isSynced || isActive || isSelectionModeActive -> 0f
+      distanceFromCurrent <= 2 -> 0f
+      distanceFromCurrent == 3 -> 2f
+      distanceFromCurrent == 4 -> 4f
+      else -> 6f
+    }
+
+  val animatedBlur by
+    animateFloatAsState(
+      targetValue = targetBlur,
+      animationSpec = tween(durationMillis = 1000),
+      label = "lineBlur"
+    )
+
+  // Waiting lines sit a touch below their place and are pulled up into it, the sung one with a
+  // small overshoot that settles - a fast-moving thing easing to a stop rather than stopping.
+  // Arriving as the sung line is a wave of its own: the row does not switch into "main", the light
+  // runs through its words, first one leading and the rest following, and the row settles behind
+  // it. `leadSpan` is how much of the arrival each next word waits for.
+  val arrival = remember { Animatable(1f) }
+  LaunchedEffect(isActive) {
+    if (isActive) {
+      arrival.snapTo(0f)
+      arrival.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow))
+    } else {
+      arrival.snapTo(1f)
+    }
+  }
+
+  val lineRise by
+    animateFloatAsState(
+      targetValue = if (isActive) 1f else 0f,
+      animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessLow),
+      label = "lineRise"
+    )
+
+  val scale by
+    animateFloatAsState(
+      targetValue = if (isActive) 1.05f else 1f,
+      animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow),
+      label = "lineScale"
+    )
+
+  val waitDropPx = with(LocalDensity.current) { 3.dp.toPx() }
+
+  val itemModifier =
+    modifier
+      .fillMaxWidth()
+      .graphicsLayer {
+        this.alpha = animatedAlpha
+        this.scaleX = scale
+        this.scaleY = scale
+        this.translationY = (1f - lineRise) * waitDropPx
+      }
+      .blur(animatedBlur.dp)
+      .clip(RoundedCornerShape(16.dp))
+      .combinedClickable(enabled = true, onClick = onClick, onLongClick = onLongClick)
+      .background(
+        if (isSelected && isSelectionModeActive)
+          MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+        else Color.Transparent
+      )
+      .padding(horizontal = 24.dp, vertical = (8 * lineSpacing).dp)
+
+  val agentAlignment =
+    when {
+      entry.isBackground -> Alignment.CenterHorizontally
+      entry.agent == "v1" -> Alignment.Start
+      entry.agent == "v2" -> Alignment.End
+      entry.agent == "v1000" -> Alignment.CenterHorizontally
+      else ->
+        when (lyricsTextPosition) {
+          LyricsPosition.LEFT -> Alignment.Start
+          LyricsPosition.CENTER -> Alignment.CenterHorizontally
+          LyricsPosition.RIGHT -> Alignment.End
+        }
+    }
+
+  val agentTextAlign =
+    when {
+      entry.isBackground -> TextAlign.Center
+      entry.agent == "v1" -> TextAlign.Left
+      entry.agent == "v2" -> TextAlign.Right
+      entry.agent == "v1000" -> TextAlign.Center
+      else ->
+        when (lyricsTextPosition) {
+          LyricsPosition.LEFT -> TextAlign.Left
+          LyricsPosition.CENTER -> TextAlign.Center
+          LyricsPosition.RIGHT -> TextAlign.Right
+        }
+    }
+
+  Column(modifier = itemModifier, horizontalAlignment = agentAlignment) {
+    FlowRow(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement =
+        when (agentTextAlign) {
+          TextAlign.Center -> Arrangement.Center
+          TextAlign.Right -> Arrangement.End
+          else -> Arrangement.Start
+        },
+      verticalArrangement =
+        Arrangement.spacedBy(
+          with(LocalDensity.current) {
+            (textSize * (lineSpacing.coerceAtMost(1.3f) - 1f)).sp.toDp()
+          }
+        )
+    ) {
+      wordData.forEachIndexed { index, (wordText, startRelative, endRelative) ->
+        val lineRelTime = (effectivePlaybackPosition - entry.time).coerceAtLeast(0L)
+        val wordDuration = (endRelative - startRelative).coerceAtLeast(1L)
+
+        val progress by
+          animateFloatAsState(
+            targetValue =
+              when {
+                lineRelTime >= endRelative -> 1f
+                lineRelTime < startRelative -> 0f
+                else -> (lineRelTime - startRelative).toFloat() / wordDuration
+              },
+            animationSpec =
+              tween(durationMillis = 150, easing = androidx.compose.animation.core.LinearEasing),
+            label = "wordProgress"
+          )
+
+        // Each word is lifted into place as the sweep reaches it, on its own spring, so the rise
+        // travels through the line word by word instead of the whole row arriving at once.
+        val rise by
+          animateFloatAsState(
+            targetValue = if (lineRelTime >= startRelative) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+            label = "wordRise"
+          )
+
+        // How far this word has been reached by the line's arrival wave: 1 once it is settled, less
+        // while it is still waiting its turn behind the words before it.
+        val lead =
+          (arrival.value * (1f + wordData.size * 0.12f) - index * 0.12f).coerceIn(0f, 1f)
+
+        // The word's own brightness to come, which the wave brings up in order rather than the whole
+        // row going bright at the instant the line becomes the sung one.
+        val dim = 0.45f * (0.5f + 0.5f * lead)
+
+        // One weight for every word, pass and pending: a heavier active word re-measured the row
+        // under the sweep and nudged every word after it sideways.
+        val finalFontWeight = FontWeight.Bold
+
+        Text(
+          text = wordText,
+          fontSize = textSize.sp,
+          modifier =
+            Modifier.graphicsLayer {
+              // the word at the head of the sweep swells a little and sits back down as it lands
+              val swell =
+                if (progress > 0f && progress < 1f) {
+                  kotlin.math.sin(progress * kotlin.math.PI.toFloat()) * 0.045f
+                } else 0f
+              translationY =
+                (1f - rise) * waitDropPx - swell * waitDropPx + (1f - lead) * waitDropPx
+              scaleX = 1f + swell
+              scaleY = 1f + swell
+            },
+          style =
+            TextStyle(
+              brush =
+                Brush.horizontalGradient(
+                  0.0f to textColor,
+                  (progress - 0.05f).coerceAtLeast(0f) to textColor,
+                  (progress + 0.05f).coerceAtMost(1f) to textColor.copy(alpha = dim),
+                  1.0f to textColor.copy(alpha = dim)
+                ),
+              fontWeight = finalFontWeight,
+              lineHeight = (textSize * lineSpacing.coerceAtMost(1.3f)).sp,
+              textAlign = agentTextAlign,
+              shadow =
+                androidx.compose.ui.graphics.Shadow(
+                  color = textColor.copy(alpha = 0.6f * progress),
+                  offset = Offset.Zero,
+                  blurRadius = (12f * progress).coerceAtLeast(0.1f)
+                )
+            )
+        )
+        if (index != wordData.lastIndex) {
+          Text(
+            text = " ",
+            fontSize = textSize.sp,
+            color = textColor.copy(alpha = if (lineRelTime >= endRelative) 1f else 0.45f),
+            lineHeight = (textSize * lineSpacing.coerceAtMost(1.3f)).sp,
+            style =
+              TextStyle(
+                shadow =
+                  if (lineRelTime >= endRelative) {
+                    androidx.compose.ui.graphics.Shadow(
+                      color = textColor.copy(alpha = 0.3f),
+                      offset = Offset.Zero,
+                      blurRadius = 6f
+                    )
+                  } else null
+              )
+          )
+        }
+      }
+    }
+
+    if (showRomanized) {
+      val romanizedText by entry.romanizedTextFlow.collectAsState()
+      romanizedText?.let { romanized ->
+        Text(
+          text = romanized,
+          fontSize = (textSize * 0.65f).sp,
+          color = textColor.copy(alpha = 0.6f),
+          textAlign = agentTextAlign,
+          fontWeight = FontWeight.SemiBold,
+          modifier = Modifier.padding(top = 2.dp).fillMaxWidth(),
+          lineHeight = (textSize * 0.65f * lineSpacing.coerceAtMost(1.3f)).sp
+        )
+      }
+    }
+
+    if (showTranslated) {
+      val translatedText by entry.translatedTextFlow.collectAsState()
+      translatedText?.let { translated ->
+        Text(
+          text = translated,
+          fontSize = (textSize * 0.7f).sp,
+          color = textColor.copy(alpha = 0.8f),
+          textAlign = agentTextAlign,
+          fontWeight = FontWeight.Medium,
+          modifier = Modifier.padding(top = 4.dp).fillMaxWidth(),
+          lineHeight = (textSize * 0.7f * lineSpacing.coerceAtMost(1.3f)).sp
+        )
+      }
+    }
+  }
+}
