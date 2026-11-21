@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -54,10 +53,10 @@ import app.music.backend.sonari.ui.component.SongListItem
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.sin
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
@@ -305,9 +304,10 @@ fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier
 }
 
 /**
- * The "> song <" brackets around the middle of the wheel. Each row that turns past knocks them
- * outward and they spring back, the two trading the blows half a beat apart, harder the faster the
- * wheel is going.
+ * The "> song <" brackets around the middle of the wheel. Every row that turns past knocks one of
+ * them, and the knock lands from above: the bracket is driven down first and springs back up over
+ * its rest, then settles. The two trade the blows half a beat apart, harder the faster the wheel
+ * runs.
  */
 @Composable
 fun BoxScope.ShuffleNeedleOverlay(
@@ -337,67 +337,52 @@ fun BoxScope.ShuffleNeedleOverlay(
       horizontalArrangement = Arrangement.SpaceBetween,
       modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
     ) {
-      NeedleArrow(speed = state.speed, phase = jiggle, pointsRight = true)
-      NeedleArrow(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
+      BracketMark(speed = state.speed, phase = jiggle, pointsRight = true)
+      BracketMark(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
     }
   }
 }
 
 @Composable
-private fun NeedleArrow(speed: Float, phase: Float, pointsRight: Boolean) {
-  // A filled, rounded play wedge like a real struck indicator, themed with the app's accent, and
-  // both sides driven by the same wrapped beat so they knock together instead of one going dead.
-  val beat = phase - kotlin.math.floor(phase)
-  val ring = exp(-3.2f * beat) * cos(5f * PI.toFloat() * beat)
-  val hit = (ring * speed).coerceIn(-1f, 1f)
-  val outward = if (pointsRight) -1f else 1f
+private fun BracketMark(speed: Float, phase: Float, pointsRight: Boolean) {
+  // A song is knocked down into the wheel, so it hits the bracket from above and the bracket gives
+  // way downwards: a quick dip, then a spring back up past its rest and a settle. Catching a rock
+  // in an open hand does the same thing - the hand drops first, it never pops up to meet it.
+  // The sine starts at zero rather than at its peak, so the very first movement is the dip, and the
+  // decaying envelope keeps the first dip the deepest.
+  val beat = phase - floor(phase)
+  val swing = exp(-4.2f * beat) * sin(6.2f * PI.toFloat() * beat)
+  val hit = (swing * speed).coerceIn(-1f, 1f)
   val tint = MaterialTheme.colorScheme.primary
   val mirror = if (pointsRight) 1f else -1f
 
   Canvas(
     modifier =
       Modifier.size(26.dp).graphicsLayer {
-        rotationZ = hit * 4f
-        translationX = outward * hit * 6.dp.toPx()
-        translationY = hit * 1.5f.dp.toPx()
-        scaleX = mirror * (1f + 0.09f * abs(hit))
-        scaleY = 1f - 0.05f * abs(hit)
+        translationY = hit * 7.dp.toPx()
+        rotationZ = hit * 3f * (if (pointsRight) 1f else -1f)
+        scaleX = mirror * (1f + 0.05f * hit)
+        // squashed as it is driven down, stretched slightly on the way back up
+        scaleY = 1f - 0.10f * hit
       },
   ) {
-    val corner = size.minDimension * 0.22f
-    val left = size.width * 0.16f
-    val top = size.height * 0.06f
-    val bottom = size.height * 0.94f
-    val tip = Offset(size.width * 0.95f, size.height * 0.5f)
-    val path = Path()
-    // Two rounded corners on the flat side, one on the tip: the wedge in the reference image.
-    val a = Offset(left, top)
-    val b = Offset(left, bottom)
-    val abEdge = (b - a).normalized()
-    val baEdge = (a - b).normalized()
-    val aTip = (tip - a).normalized()
-    val bTip = (tip - b).normalized()
-
-    path.moveTo((a + abEdge * corner).x, (a + abEdge * corner).y)
-    path.lineTo((b + baEdge * corner).x, (b + baEdge * corner).y)
-    path.quadraticBezierTo(b.x, b.y, (b + bTip * corner).x, (b + bTip * corner).y)
-    path.lineTo((tip + bTip * corner).x, (tip + bTip * corner).y)
-    path.quadraticBezierTo(tip.x, tip.y, (tip + aTip * corner).x, (tip + aTip * corner).y)
-    path.lineTo((a + aTip * corner).x, (a + aTip * corner).y)
-    path.quadraticBezierTo(a.x, a.y, (a + abEdge * corner).x, (a + abEdge * corner).y)
-    path.close()
-
-    drawPath(path = path, color = tint)
+    // A rounded angle bracket, drawn rather than a glyph so the two sides stay optically equal.
+    val stroke = size.minDimension * 0.17f
+    val path =
+      Path().apply {
+        moveTo(size.width * 0.24f, size.height * 0.10f)
+        lineTo(size.width * 0.80f, size.height * 0.50f)
+        lineTo(size.width * 0.24f, size.height * 0.90f)
+      }
+    drawPath(
+      path = path,
+      color = tint,
+      style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
   }
 }
 
-private fun Offset.normalized(): Offset {
-  val length = kotlin.math.sqrt(x * x + y * y)
-  return if (length <= 0.0001f) Offset.Zero else Offset(x / length, y / length)
-}
-
-/** A burst of confetti out of the middle of the wheel once it has stopped on a song. */
-@Composable
+/** A burst of confetti out of the middle of the wheel once it has stopped on a song. */@Composable
 fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
   if (!state.landed) return
   val parties =
