@@ -9,16 +9,16 @@ Local files, folders and YouTube in one library, with lyrics that move with the 
 <br/>
 
 <a href="https://github.com/kusoidev/sonari-android/releases/latest">
-  <img src="https://img.shields.io/github/v/release/kusoidev/sonari-android?label=release&style=flat-square&color=2f6f4f" alt="Latest release">
+  <img src="https://img.shields.io/badge/version-1.4.6-2f6f4f?style=flat-square" alt="Version 1.4.6">
 </a>
 <a href="https://github.com/kusoidev/sonari-android/releases">
-  <img src="https://img.shields.io/github/downloads/kusoidev/sonari-android/total?label=downloads&style=flat-square&color=444444" alt="Downloads">
+  <img src="https://img.shields.io/badge/download-APK-2f6f4f?style=flat-square" alt="Download the APK">
 </a>
-<a href="https://github.com/kusoidev/sonari-android/stargazers">
-  <img src="https://img.shields.io/github/stars/kusoidev/sonari-android?label=stars&style=flat-square&color=444444" alt="Stars">
+<img src="https://img.shields.io/badge/Android-8.0%2B-444444?style=flat-square" alt="Android 8.0+">
+<img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-444444?style=flat-square" alt="Kotlin, Jetpack Compose">
+<a href="LICENSE">
+  <img src="https://img.shields.io/badge/license-GPL--3.0-444444?style=flat-square" alt="GPL-3.0">
 </a>
-<img src="https://img.shields.io/badge/Android-8.0%2B-2f6f4f?style=flat-square" alt="Android 8.0+">
-<img src="https://img.shields.io/github/license/kusoidev/sonari-android?style=flat-square&color=444444" alt="License">
 
 </div>
 
@@ -30,7 +30,10 @@ Local files, folders and YouTube in one library, with lyrics that move with the 
 ## Install
 
 1. Open the [latest release](https://github.com/kusoidev/sonari-android/releases/latest) on your phone.
-2. Download the `.apk` that matches your device. If you are not sure, take **arm64**: it covers almost every phone from the last eight years. **universal** runs anywhere but is a bigger download.
+2. Download the `.apk` you want:
+   - `Sonari-ver.X.X.X-release.apk` — the app itself. This is the one you want unless you have a reason not to.
+   - `Sonari-ver.X.X.X-debug.apk` — a test build. It installs next to the release one as a separate app (`Sonari debug`), so both can stay on the phone; use it to reproduce a bug or grab logs.
+   - `Sonari-ver.X.X.X-universal.apk` — for older or 32-bit phones where the release build refuses to install. It runs anywhere, but it is a bigger download.
 3. Open the downloaded file. Android will ask you to allow installs from your browser or file manager; allow it once, then install.
 4. Open Sonari. No account is needed to start listening.
 
