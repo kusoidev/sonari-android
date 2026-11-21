@@ -342,6 +342,7 @@ fun AppearanceSettings(
           LyricsAnimationStyle.APPLE -> stringResource(R.string.apple_music_style)
           LyricsAnimationStyle.APPLE_V2 -> stringResource(R.string.apple_music_style_letter)
           LyricsAnimationStyle.sonari_1 -> stringResource(R.string.sonari_1)
+          LyricsAnimationStyle.sonari_bloom -> stringResource(R.string.sonari_bloom)
           LyricsAnimationStyle.LYRICS_V2 -> stringResource(R.string.lyrics_v2_fluid)
           LyricsAnimationStyle.METRO_LYRICS -> stringResource(R.string.lyrics_animation_metro)
         }
@@ -1385,6 +1386,7 @@ fun AppearanceSettings(
                   LyricsAnimationStyle.SLIDE -> stringResource(R.string.slide)
                   LyricsAnimationStyle.KARAOKE -> stringResource(R.string.karaoke)
                   LyricsAnimationStyle.sonari_1 -> stringResource(R.string.sonari_1)
+                  LyricsAnimationStyle.sonari_bloom -> stringResource(R.string.sonari_bloom)
                   LyricsAnimationStyle.APPLE -> stringResource(R.string.apple_music_style)
                   LyricsAnimationStyle.APPLE_V2 -> stringResource(R.string.apple_music_style_letter)
                   LyricsAnimationStyle.LYRICS_V2 -> stringResource(R.string.lyrics_v2_fluid)

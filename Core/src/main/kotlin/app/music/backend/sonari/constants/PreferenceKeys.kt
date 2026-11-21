@@ -551,6 +551,7 @@ enum class LyricsAnimationStyle {
   APPLE,
   APPLE_V2,
   sonari_1,
+  sonari_bloom,
   LYRICS_V2,
   METRO_LYRICS,
 }

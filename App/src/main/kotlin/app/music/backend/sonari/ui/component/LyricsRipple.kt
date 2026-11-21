@@ -69,7 +69,8 @@ class LyricsRipple(rowCount: Int) {
   /**
    * Each row chases its place on a critically damped spring, solved exactly, so any frame time
    * stays stable. Nearer rows are given a stiffer spring than far ones, which is what spreads the
-   * catch-up out into a wave.
+   * catch-up out into a wave. Distance is measured either way, so the lines already sung trail off
+   * the top on the same wave as the ones still to come.
    */
   private fun step(dt: Float): Boolean {
     var any = false
@@ -77,7 +78,7 @@ class LyricsRipple(rowCount: Int) {
       val lag = lags[row]
       val v = velocities[row]
       if (lag == 0f && v == 0f) continue
-      val k = (row - anchorRow).coerceIn(1, MaxRows)
+      val k = abs(row - anchorRow).coerceIn(1, MaxRows)
       val omega = 1000f / (LagPerRowMs * k)
       val e = exp(-omega * dt)
       val tmp = (v + omega * lag) * dt

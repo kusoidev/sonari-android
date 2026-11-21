@@ -57,8 +57,36 @@ fun sonariLyricsLine(
   isSelectionModeActive: Boolean,
   isAutoScrollActive: Boolean,
   expressiveAccent: Color,
-  modifier: Modifier = Modifier
+  modifier: Modifier = Modifier,
+  /** The letter-by-letter renderer: the same motion one character at a time, with a bloom. */
+  letterByLetter: Boolean = false
 ) {
+
+  // The two Sonari styles differ only in how finely the line is cut up, so one entry point picks.
+  if (letterByLetter) {
+    sonariBloomLine(
+      entry = entry,
+      nextEntryTime = nextEntryTime,
+      effectivePlaybackPosition = effectivePlaybackPosition,
+      isSynced = isSynced,
+      isActive = isActive,
+      distanceFromCurrent = distanceFromCurrent,
+      lyricsTextPosition = lyricsTextPosition,
+      textColor = textColor,
+      showRomanized = showRomanized,
+      showTranslated = showTranslated,
+      textSize = textSize,
+      lineSpacing = lineSpacing,
+      onClick = onClick,
+      onLongClick = onLongClick,
+      isSelected = isSelected,
+      isSelectionModeActive = isSelectionModeActive,
+      isAutoScrollActive = isAutoScrollActive,
+      expressiveAccent = expressiveAccent,
+      modifier = modifier
+    )
+    return
+  }
 
   val duration =
     remember(entry.time, nextEntryTime) {

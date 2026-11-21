@@ -694,7 +694,9 @@ fun Lyrics(
             previous += consumed
             if (consumed != 0f) {
               for (visible in lazyListState.layoutInfo.visibleItemsInfo) {
-                if (visible.index > lookUpIndex) ripple.holdBack(visible.index, consumed)
+                // every row but the one being pulled, above the line as well as below: the lines
+                // already sung trail off the top on the same wave as the ones still to come
+                if (visible.index != lookUpIndex) ripple.holdBack(visible.index, consumed)
               }
             }
           }
@@ -950,8 +952,12 @@ fun Lyrics(
             val isSelected = selectedIndices.contains(index)
             // Every line goes through the Sonari renderer, not just the ones a provider shipped
             // word timings for: it synthesises them from the text when they are missing, which is
-            // what keeps a plain LRC file sweeping word by word.
-            if (lyricsAnimationStyle == LyricsAnimationStyle.sonari_1) {
+            // what keeps a plain LRC file sweeping word by word. The bloom style is the same
+            // renderer taken down to single letters.
+            if (
+              lyricsAnimationStyle == LyricsAnimationStyle.sonari_1 ||
+                lyricsAnimationStyle == LyricsAnimationStyle.sonari_bloom
+            ) {
               val currentLineTime =
                 if (displayedCurrentLineIndex >= 0 && displayedCurrentLineIndex < lines.size) {
                   lines[displayedCurrentLineIndex].time
@@ -972,6 +978,7 @@ fun Lyrics(
                   Modifier.graphicsLayer {
                     translationY = ripple.lagOf(index + lyricsHeaderItems)
                   },
+                letterByLetter = lyricsAnimationStyle == LyricsAnimationStyle.sonari_bloom,
                 lyricsTextPosition = lyricsTextPosition,
                 textColor = textColor,
                 showRomanized =
