@@ -11,6 +11,7 @@ import androidx.compose.animation.shrinkOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -253,6 +254,7 @@ fun ListItem(
   title: String,
   subtitle: String?,
   badges: @Composable RowScope.() -> Unit = {},
+  endBadges: @Composable RowScope.() -> Unit = {},
   thumbnailContent: @Composable () -> Unit,
   trailingContent: @Composable RowScope.() -> Unit = {},
   isSelected: Boolean? = false,
@@ -274,9 +276,14 @@ fun ListItem(
           color = MaterialTheme.colorScheme.secondary,
           style = MaterialTheme.typography.bodySmall,
           maxLines = 1,
-          overflow = TextOverflow.Ellipsis
+          overflow = TextOverflow.Ellipsis,
+          // Weighted so trailing end badges keep their place while a long artist
+          // name ellipsizes instead of pushing them off the line.
+          modifier = Modifier.weight(1f, fill = false),
         )
       }
+
+      endBadges()
     },
     thumbnailContent = thumbnailContent,
     trailingContent = trailingContent,
@@ -1012,16 +1019,27 @@ fun MediaMetadataListItem(
 
 @Composable
 fun DownloadedTag(modifier: Modifier = Modifier) {
-  Text(
-    text = stringResource(R.string.filter_downloaded),
-    style = MaterialTheme.typography.labelSmall,
-    color = MaterialTheme.colorScheme.onPrimaryContainer,
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(3.dp),
     modifier =
       modifier
-        .clip(RoundedCornerShape(4.dp))
-        .background(MaterialTheme.colorScheme.primaryContainer)
-        .padding(horizontal = 6.dp, vertical = 2.dp),
-  )
+        .clip(RoundedCornerShape(50))
+        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f))
+        .padding(horizontal = 7.dp, vertical = 3.dp),
+  ) {
+    Icon(
+      painter = painterResource(R.drawable.offline),
+      contentDescription = null,
+      tint = MaterialTheme.colorScheme.onPrimaryContainer,
+      modifier = Modifier.size(11.dp),
+    )
+    Text(
+      text = stringResource(R.string.filter_downloaded),
+      style = MaterialTheme.typography.labelSmall,
+      color = MaterialTheme.colorScheme.onPrimaryContainer,
+    )
+  }
 }
 
 /**
@@ -1095,9 +1113,10 @@ fun YouTubeListItem(
       val download by LocalDownloadUtil.current.getDownload(item.id).collectAsState(null)
       Icon.Download(download?.state)
     }
-
+  },
+  endBadges: @Composable RowScope.() -> Unit = {
     if (showDownloadedTag && rememberItemDownloaded(item)) {
-      DownloadedTag()
+      DownloadedTag(Modifier.padding(start = 6.dp))
     }
   },
   shape: Shape = RectangleShape,
@@ -1169,6 +1188,7 @@ fun YouTubeListItem(
         title = item.title,
         subtitle = subtitle,
         badges = badges,
+        endBadges = endBadges,
         thumbnailContent = thumbnailContent,
         trailingContent = trailingContent,
         modifier = modifier,
