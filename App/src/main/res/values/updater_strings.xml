@@ -82,6 +82,8 @@
     <string name="update_dialog_body">To enjoy our newest features, tap the button below.</string>
     <string name="update_dialog_update">Update the app</string>
     <string name="update_dialog_later">Not now</string>
+    <string name="discord_join_title">Join our Discord</string>
+    <string name="discord_join_desc">Chat with other listeners and share what you\'re playing</string>
     <string name="new_update">New update</string>
     <string name="release_date_v">Released on: %1$s</string>
     <string name="update_size_v">Size: %1$s MB</string>

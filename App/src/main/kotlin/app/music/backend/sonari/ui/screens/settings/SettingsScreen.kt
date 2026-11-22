@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import app.music.backend.sonari.CommunityLinks
 import app.music.backend.sonari.LocalPlayerAwareWindowInsets
 import app.music.backend.sonari.R
 import app.music.backend.sonari.ui.component.IconButton
@@ -80,6 +81,10 @@ fun SettingsScreen(
     } else {
       stringResource(R.string.version, app.music.backend.sonari.BuildConfig.VERSION_NAME)
     }
+
+  // The community invite, right beside App Updates so it is easy to find.
+  val discordText = stringResource(R.string.discord_join_title)
+  val discordDesc = stringResource(R.string.discord_join_desc)
 
   val scrollState = rememberScrollState()
   Column(
@@ -225,6 +230,20 @@ fun SettingsScreen(
             title = { Text(updateText) },
             description = { Text(updateDesc) },
             onClick = { navController.navigate("update") }
+          )
+        )
+      }
+      if (
+        discordText.lowercase().contains(searchLower) ||
+          discordDesc.lowercase().contains(searchLower)
+      ) {
+        add(
+          Material3SettingsItem(
+            isHighlighted = (highlightKey == discordText),
+            icon = painterResource(R.drawable.ic_discord_new),
+            title = { Text(discordText) },
+            description = { Text(discordDesc) },
+            onClick = { uriHandler.openUri(CommunityLinks.DISCORD_INVITE) }
           )
         )
       }

@@ -24,6 +24,9 @@ Local files, folders and YouTube in one library, with lyrics that move with the 
 <a href="LICENSE">
   <img src="https://img.shields.io/github/license/kusoidev/sonari-android?style=flat-square&color=444444" alt="GPL-3.0">
 </a>
+<a href="https://discord.gg/XGnuzMpdVS">
+  <img src="https://img.shields.io/badge/Discord-join%20the%20server-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord">
+</a>
 
 </div>
 
@@ -81,7 +84,16 @@ and should be backed up.
 Because the APK does not come from Google Play. The warning is about the source, not the app; the code is here for you to read.
 
 **Something is broken. Where do I say so?**
-Open an [issue](https://github.com/kusoidev/sonari-android/issues) with your phone model, Android version and what happened.
+Open an [issue](https://github.com/kusoidev/sonari-android/issues) with your phone model, Android version and what happened, or say it in the [Discord server](https://discord.gg/XGnuzMpdVS).
+
+---
+
+## Community
+
+The [Discord server](https://discord.gg/XGnuzMpdVS) is where bugs get discussed, builds get tried early and
+questions get answered fastest. It is also in the app: **Settings → Join our Discord**, one tap away.
+
+[![Join the Discord server](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/XGnuzMpdVS)
 
 ---
 

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import app.music.backend.sonari.BuildConfig
+import app.music.backend.sonari.CommunityLinks
 import app.music.backend.sonari.LocalPlayerAwareWindowInsets
 import app.music.backend.sonari.R
 import app.music.backend.sonari.ui.component.IconButton
@@ -236,8 +237,8 @@ fun AboutScreen(
               Material3SettingsItem(
                 icon = painterResource(R.drawable.ic_discord_new),
                 title = { Text("Discord") },
-                description = { Text("discord.gg/Xt5hgsJJuA") },
-                onClick = { uriHandler.openUri("https://discord.gg/Xt5hgsJJuA") }
+                description = { Text(CommunityLinks.DISCORD_HANDLE) },
+                onClick = { uriHandler.openUri(CommunityLinks.DISCORD_INVITE) }
               )
             )
         )

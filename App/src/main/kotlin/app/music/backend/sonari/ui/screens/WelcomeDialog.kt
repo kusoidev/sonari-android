@@ -31,6 +31,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import app.music.backend.sonari.BuildConfig
+import app.music.backend.sonari.CommunityLinks
 import app.music.backend.sonari.R
 
 @Composable
@@ -111,8 +112,8 @@ fun WelcomeDialog(onDismissRequest: () -> Unit) {
           WelcomeActionRow(
             icon = painterResource(R.drawable.ic_discord_new),
             title = "Discord",
-            subtitle = "discord.gg/Xt5hgsJJuA",
-            onClick = { uriHandler.openUri("https://discord.gg/Xt5hgsJJuA") }
+            subtitle = CommunityLinks.DISCORD_HANDLE,
+            onClick = { uriHandler.openUri(CommunityLinks.DISCORD_INVITE) }
           )
         }
 
