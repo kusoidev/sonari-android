@@ -71,11 +71,11 @@ No. Search, playback, lyrics and downloads work without signing in.
 From public providers (listed above) that Sonari queries when a track needs them. Nothing is bundled with the app.
 
 **Will updating lose my library?**
-No, as long as the new APK is signed with the same key as the build already on the phone. Installing
-one over the other keeps your library, playlists and settings. Android refuses with a bare "App not
-installed" if the two builds are signed with different keys, which is what happens when updating from
-a build older than 1.4.7: those were signed with a local test key. Uninstall once, then install the
-new APK. Uninstalling deletes the app's data, so playlists and downloads go with it.
+No. Every release since 1.4.8 is signed with the same key as the builds before it, so a new APK
+installs straight over the old one and your library, playlists and downloads stay. Android only
+refuses with a bare "App not installed" when the two builds are signed with different keys, so that
+key never changes now: losing it would mean no more updates, which is why it is kept with the project
+and should be backed up.
 
 **Why does Android warn me about the download?**
 Because the APK does not come from Google Play. The warning is about the source, not the app; the code is here for you to read.
