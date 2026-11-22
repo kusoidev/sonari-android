@@ -289,6 +289,7 @@ class MainActivity : ComponentActivity() {
   companion object {
     const val ACTION_SEARCH = "app.music.backend.sonari.action.SEARCH"
     const val ACTION_LIBRARY = "app.music.backend.sonari.action.LIBRARY"
+    const val ACTION_UPDATE = "app.music.backend.sonari.action.UPDATE"
     const val ACTION_RECOGNITION = "app.music.backend.sonari.action.RECOGNITION"
     const val ACTION_NOW_PLAYING = "app.music.backend.sonari.action.NOW_PLAYING"
     const val ACTION_QUEUE = "app.music.backend.sonari.action.QUEUE"
@@ -668,17 +669,16 @@ class MainActivity : ComponentActivity() {
     val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
     val enableHighRefreshRate by rememberPreference(EnableHighRefreshRateKey, defaultValue = true)
     val context = LocalContext.current
-    var showUpdateDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
-    var availableUpdateVersion by remember { androidx.compose.runtime.mutableStateOf("") }
-    var availableUpdateChangelog by remember {
-      androidx.compose.runtime.mutableStateOf<
-        List<app.music.backend.sonari.sonari.updater.ChangelogSection>
-      >(
-        emptyList()
+    // The newest release we know of, kept from the last check so the banner can appear at once.
+    var availableUpdateVersion by remember {
+      androidx.compose.runtime.mutableStateOf(
+        app.music.backend.sonari.sonari.updater.pendingUpdateVersion(context)
       )
     }
-    var availableUpdateDescription by remember {
-      androidx.compose.runtime.mutableStateOf<String?>(null)
+    var dismissedUpdateVersion by remember {
+      androidx.compose.runtime.mutableStateOf(
+        app.music.backend.sonari.sonari.updater.getDismissedUpdateVersion(context)
+      )
     }
     var whatsNewInfo by remember {
       androidx.compose.runtime.mutableStateOf<app.music.backend.sonari.sonari.updater.WhatsNewInfo?>(
@@ -719,24 +719,20 @@ class MainActivity : ComponentActivity() {
         delay(2000L)
         checkForUpdate(
           context = context,
-          onSuccess = { latestVersion, isAvailable, changelog, _, _, description, _, _ ->
-            val currentVersion = BuildConfig.VERSION_NAME
+          onSuccess = { latestVersion, isAvailable, _, _, _, _, _, _ ->
             Log.d(
               "UpdateCheck",
-              "Startup check success. Latest: $latestVersion, Current: $currentVersion, isAvailable: $isAvailable"
+              "Startup check: latest=$latestVersion, current=${BuildConfig.VERSION_NAME}, available=$isAvailable"
             )
             saveUpdateAvailableState(context, isAvailable)
+            app.music.backend.sonari.sonari.updater.saveLatestKnownVersion(context, latestVersion)
 
             if (isAvailable) {
               availableUpdateVersion = latestVersion
-              availableUpdateChangelog = changelog
-              availableUpdateDescription = description
-              showUpdateDialog = true
-            }
 
-            if (isAvailable && getUpdateNotificationsSetting(context)) {
-              Log.d("UpdateCheck", "Posting update notification for $latestVersion")
-              UpdateNotificationHelper.showUpdateNotification(context, latestVersion)
+              if (getUpdateNotificationsSetting(context)) {
+                UpdateNotificationHelper.showUpdateNotification(context, latestVersion)
+              }
             }
           },
           onError = { Log.e("UpdateCheck", "Startup check failed") }
@@ -941,27 +937,18 @@ class MainActivity : ComponentActivity() {
     ) {
       val hapticHelper = rememberHapticHelper()
 
-      if (showUpdateDialog) {
-        app.music.backend.sonari.sonari.component.UpdateAvailableDialog(
-          version = availableUpdateVersion,
-          changelog = availableUpdateChangelog,
-          description = availableUpdateDescription,
-          onDismiss = { showUpdateDialog = false }
+      whatsNewInfo?.let { info ->
+        app.music.backend.sonari.sonari.updater.WhatsNewDialog(
+          version = BuildConfig.VERSION_NAME,
+          info = info,
+          onDismiss = {
+            app.music.backend.sonari.sonari.updater.saveLastSeenChangelogVersion(
+              context,
+              BuildConfig.VERSION_NAME,
+            )
+            whatsNewInfo = null
+          }
         )
-      } else {
-        whatsNewInfo?.let { info ->
-          app.music.backend.sonari.sonari.updater.WhatsNewDialog(
-            version = BuildConfig.VERSION_NAME,
-            info = info,
-            onDismiss = {
-              app.music.backend.sonari.sonari.updater.saveLastSeenChangelogVersion(
-                context,
-                BuildConfig.VERSION_NAME,
-              )
-              whatsNewInfo = null
-            }
-          )
-        }
       }
       BoxWithConstraints(
         modifier =
@@ -1154,6 +1141,9 @@ class MainActivity : ComponentActivity() {
               ACTION_LYRICS -> {
                 playerBottomSheetState.expandSoft()
                 showLyricsRequested = true
+              }
+              ACTION_UPDATE -> {
+                navController.navigate("update") { launchSingleTop = true }
               }
             }
           }
@@ -1993,6 +1983,34 @@ class MainActivity : ComponentActivity() {
               isSuccess = ringtoneUiState.isSuccess,
               onDismiss = { ringtoneViewModel.dismissProgress() },
               onOpenSettings = { ringtoneViewModel.openRingtoneSettings(this@MainActivity) }
+            )
+          }
+
+          // A newer release waiting on GitHub: the prompt from the reference, once per release.
+          if (
+            availableUpdateVersion.isNotEmpty() &&
+              availableUpdateVersion != dismissedUpdateVersion &&
+              currentRoute != "update"
+          ) {
+            app.music.backend.sonari.sonari.component.UpdateAvailableDialog(
+              currentVersion = BuildConfig.VERSION_NAME,
+              latestVersion = availableUpdateVersion,
+              onUpdate = {
+                app.music.backend.sonari.sonari.updater.saveDismissedUpdateVersion(
+                  context,
+                  availableUpdateVersion,
+                )
+                dismissedUpdateVersion = availableUpdateVersion
+                if (playerBottomSheetState.isExpanded) playerBottomSheetState.collapseSoft()
+                navController.navigate("update") { launchSingleTop = true }
+              },
+              onDismiss = {
+                app.music.backend.sonari.sonari.updater.saveDismissedUpdateVersion(
+                  context,
+                  availableUpdateVersion,
+                )
+                dismissedUpdateVersion = availableUpdateVersion
+              },
             )
           }
 

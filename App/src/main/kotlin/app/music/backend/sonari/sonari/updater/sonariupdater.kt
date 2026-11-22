@@ -340,8 +340,7 @@ fun UpdateScreen(navController: NavHostController) {
                       }
                     } else {
                       val urlToDownload =
-                        currentStatus.apkUrl
-                          ?: "https://github.com/SonariApp/Sonari/releases/download/${currentStatus.version}/sonari.apk"
+                        currentStatus.apkUrl ?: UpdateSource.RELEASES_PAGE
 
                       val constraints =
                         Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -631,12 +630,15 @@ private fun formatGitHubDate(githubDate: String): String =
     githubDate
   }
 
+/**
+ * Whether [latestVersion] is newer than [currentVersion]. Either may arrive as a release tag
+ * ("sonari-ver.1.5.0") or as a plain version ("1.5.0"), so both are reduced to their leading
+ * numbers first; an equal pair counts as up to date, so a newer build the user already runs is
+ * never offered as an "update".
+ */
 fun isNewerVersion(latestVersion: String, currentVersion: String): Boolean {
-  val latestVersionClean = latestVersion.removePrefix("b").removePrefix("v")
-  val currentVersionClean = currentVersion.removePrefix("b").removePrefix("v")
-
-  val latestParts = latestVersionClean.split(".").map { it.toIntOrNull() ?: 0 }
-  val currentParts = currentVersionClean.split(".").map { it.toIntOrNull() ?: 0 }
+  val latestParts = UpdateSource.versionNumbers(latestVersion)
+  val currentParts = UpdateSource.versionNumbers(currentVersion)
 
   for (i in 0 until maxOf(latestParts.size, currentParts.size)) {
     val latest = latestParts.getOrElse(i) { 0 }
@@ -645,13 +647,6 @@ fun isNewerVersion(latestVersion: String, currentVersion: String): Boolean {
       latest > current -> return true
       latest < current -> return false
     }
-  }
-
-  if (latestVersionClean == currentVersionClean) {
-    val latestIsBeta = latestVersion.startsWith("b")
-    val currentIsBeta = currentVersion.startsWith("b")
-
-    if (currentIsBeta && !latestIsBeta) return true
   }
 
   return false
@@ -674,29 +669,28 @@ suspend fun checkForUpdate(
 ) {
   withContext(Dispatchers.IO) {
     try {
-      val url = URL("https://api.github.com/repos/SonariApp/Sonari/releases/latest")
-      val json = url.openStream().bufferedReader().use { it.readText() }
+      val json =
+        UpdateSource.open(UpdateSource.LATEST_RELEASE_API).bufferedReader().use { it.readText() }
       val targetRelease = JSONObject(json)
 
-      val currentVersion = BuildConfig.VERSION_NAME
-      val targetTagName = targetRelease.getString("tag_name")
-      val currentClean = currentVersion.removePrefix("b").removePrefix("v").trim()
-      val targetClean = targetTagName.removePrefix("b").removePrefix("v").trim()
-      val shouldShow = currentClean != targetClean
+      val currentVersion = UpdateSource.cleanTag(BuildConfig.VERSION_NAME)
+      val tagWithPrefix = targetRelease.getString("tag_name")
+      val latestVersion = UpdateSource.cleanTag(tagWithPrefix)
 
-      if (shouldShow) {
-        val tagWithPrefix = targetRelease.getString("tag_name")
-        val displayTag = tagWithPrefix
+      // Only a genuinely newer release is offered, so a build ahead of the newest release (a local
+      // debug build, say) is never told to "update" down to an older version.
+      if (isNewerVersion(latestVersion, currentVersion)) {
+        val displayTag = latestVersion
 
         val changelogList = mutableListOf<ChangelogSection>()
         var description: String? = null
         var imageUrl: String? = null
         try {
-          val changelogUrl =
-            URL(
-              "https://github.com/SonariApp/Sonari/releases/download/$tagWithPrefix/changelog.json"
-            )
-          val changelogJson = changelogUrl.openStream().bufferedReader().use { it.readText() }
+          val changelogJson =
+            UpdateSource
+              .open("${UpdateSource.RELEASE_DOWNLOAD_URL}/$tagWithPrefix/changelog.json")
+              .bufferedReader()
+              .use { it.readText() }
           val changelogData = JSONObject(changelogJson)
 
           description = changelogData.optString("description").takeIf { it.isNotEmpty() }
@@ -731,22 +725,24 @@ suspend fun checkForUpdate(
         val publishedAt = targetRelease.getString("published_at")
         val formattedReleaseDate = formatGitHubDate(publishedAt)
         val assets = targetRelease.getJSONArray("assets")
-
-        var apkSizeInMB = ""
-        var apkDownloadUrl = ""
+        val assetUrls = mutableMapOf<String, String>()
+        val assetSizes = mutableMapOf<String, Long>()
         for (j in 0 until assets.length()) {
           val asset = assets.getJSONObject(j)
           val assetName = asset.getString("name")
-          if (
-            assetName.endsWith(".apk", ignoreCase = true) &&
-              !assetName.lowercase().contains("debug")
-          ) {
-            val apkSizeInBytes = asset.getLong("size")
-            apkSizeInMB = String.format("%.1f", apkSizeInBytes / (1024.0 * 1024.0))
-            apkDownloadUrl = asset.getString("browser_download_url")
-            break
-          }
+          assetUrls[assetName] = asset.getString("browser_download_url")
+          assetSizes[assetName] = asset.getLong("size")
         }
+
+        val apkDownloadUrl =
+          UpdateSource.pickApkAsset(assetUrls.keys.toList(), assetUrls).orEmpty()
+        val apkSizeInMB =
+          if (apkDownloadUrl.isEmpty()) {
+            ""
+          } else {
+            val sizeInBytes = assetUrls.entries.first { it.value == apkDownloadUrl }.key
+            String.format("%.1f", (assetSizes[sizeInBytes] ?: 0L) / (1024.0 * 1024.0))
+          }
 
         if (apkDownloadUrl.isNotEmpty()) {
           withContext(Dispatchers.Main) {
@@ -794,15 +790,10 @@ data class WhatsNewInfo(
 
 /**
  * URLConnection defaults both connect and read timeouts to 0 (infinite) — opening a stream without
- * setting them can hang this Dispatchers.IO call indefinitely on a stalled request.
+ * setting them can hang this Dispatchers.IO call indefinitely on a stalled request. Every update
+ * request goes through [UpdateSource.open], which also sends the User-Agent GitHub asks for.
  */
-private fun openTimedStream(url: String): java.io.InputStream =
-  (URL(url).openConnection() as java.net.URLConnection)
-    .apply {
-      connectTimeout = 15_000
-      readTimeout = 15_000
-    }
-    .getInputStream()
+private fun openTimedStream(url: String): java.io.InputStream = UpdateSource.open(url)
 
 /**
  * Looks up the release whose tag matches [currentVersion] (not necessarily the latest — the user
@@ -812,17 +803,15 @@ private fun openTimedStream(url: String): java.io.InputStream =
 suspend fun fetchChangelogForVersion(currentVersion: String): WhatsNewInfo? =
   withContext(Dispatchers.IO) {
     try {
-      val cleanCurrent = currentVersion.removePrefix("b").removePrefix("v").trim()
+      val cleanCurrent = UpdateSource.cleanTag(currentVersion)
       val releasesJson =
-        openTimedStream("https://api.github.com/repos/SonariApp/Sonari/releases")
-          .bufferedReader()
-          .use { it.readText() }
+        openTimedStream(UpdateSource.RELEASES_API).bufferedReader().use { it.readText() }
       val releases = JSONArray(releasesJson)
 
       var matchedRelease: JSONObject? = null
       for (i in 0 until releases.length()) {
         val release = releases.getJSONObject(i)
-        val tagClean = release.getString("tag_name").removePrefix("b").removePrefix("v").trim()
+        val tagClean = UpdateSource.cleanTag(release.getString("tag_name"))
         if (tagClean == cleanCurrent) {
           matchedRelease = release
           break
@@ -835,9 +824,7 @@ suspend fun fetchChangelogForVersion(currentVersion: String): WhatsNewInfo? =
       var description: String? = null
       try {
         val changelogJson =
-          openTimedStream(
-              "https://github.com/SonariApp/Sonari/releases/download/$tag/changelog.json"
-            )
+          openTimedStream("${UpdateSource.RELEASE_DOWNLOAD_URL}/$tag/changelog.json")
             .bufferedReader()
             .use { it.readText() }
         val changelogData = JSONObject(changelogJson)

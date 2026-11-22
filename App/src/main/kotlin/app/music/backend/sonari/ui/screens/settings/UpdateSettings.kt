@@ -1,7 +1,5 @@
 package app.music.backend.sonari.ui.screens.settings
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -85,11 +83,13 @@ fun UpdateSettings(
 
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
       try {
-        val url =
-          java.net.URL("https://api.github.com/repos/SonariApp/Sonari/releases/latest")
-        val json = url.openStream().bufferedReader().use { it.readText() }
+        val json =
+          app.music.backend.sonari.sonari.updater.UpdateSource
+            .open(app.music.backend.sonari.sonari.updater.UpdateSource.LATEST_RELEASE_API)
+            .bufferedReader()
+            .use { it.readText() }
         val targetRelease = JSONObject(json)
-        releaseNotes = targetRelease.getString("body")
+        releaseNotes = targetRelease.optString("body").takeIf { it.isNotBlank() }
       } catch (e: Exception) {
         e.printStackTrace()
       }
@@ -132,17 +132,14 @@ fun UpdateSettings(
                 Text(stringResource(R.string.version, BuildConfig.VERSION_NAME))
               }
             },
-            onClick = {
-              val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sonari.fun"))
-              context.startActivity(intent)
-            }
+            onClick = { navController.navigate("update") { launchSingleTop = true } }
           )
         )
     )
 
     Text(
       text =
-        "To download updates, you will be redirected to our official site containing ads. This helps fund the app's development. Thank you for your support!",
+        "Updates are published in the project's GitHub releases, and Sonari checks that same page for new versions — no other site is involved.",
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)

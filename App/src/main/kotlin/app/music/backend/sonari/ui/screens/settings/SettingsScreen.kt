@@ -71,6 +71,16 @@ fun SettingsScreen(
   val storageDesc = stringResource(R.string.setting_desc_storage)
   val backupDesc = stringResource(R.string.setting_desc_backup)
 
+  // A way to ask for an update by hand, and what it says before you do.
+  val updateText = stringResource(R.string.app_updates_title)
+  val waitingUpdate = app.music.backend.sonari.sonari.updater.pendingUpdateVersion(context)
+  val updateDesc =
+    if (waitingUpdate.isNotEmpty()) {
+      stringResource(R.string.update_to_v, waitingUpdate)
+    } else {
+      stringResource(R.string.version, app.music.backend.sonari.BuildConfig.VERSION_NAME)
+    }
+
   val scrollState = rememberScrollState()
   Column(
     Modifier.windowInsetsPadding(
@@ -202,6 +212,19 @@ fun SettingsScreen(
             title = { Text(backupText) },
             description = { Text(backupDesc) },
             onClick = { navController.navigate("settings/backup_restore") }
+          )
+        )
+      }
+      if (
+        updateText.lowercase().contains(searchLower) || updateDesc.lowercase().contains(searchLower)
+      ) {
+        add(
+          Material3SettingsItem(
+            isHighlighted = (highlightKey == updateText),
+            icon = painterResource(R.drawable.update),
+            title = { Text(updateText) },
+            description = { Text(updateDesc) },
+            onClick = { navController.navigate("update") }
           )
         )
       }

@@ -96,6 +96,8 @@ import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.CachePlaylistMenu
 import app.music.backend.sonari.ui.menu.SelectionSongMenu
 import app.music.backend.sonari.ui.menu.SongMenu
+import app.music.backend.sonari.ui.screens.library.PlaylistShuffleOverlay
+import app.music.backend.sonari.ui.screens.library.rememberPlaylistShuffle
 import app.music.backend.sonari.ui.utils.backToMain
 import app.music.backend.sonari.utils.listItemShape
 import app.music.backend.sonari.utils.makeTimeString
@@ -161,6 +163,17 @@ fun CachePlaylistScreen(
   val focusRequester = remember { FocusRequester() }
   val lazyListState = rememberLazyListState()
 
+  // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
+  val (shuffleRoulette, shufflePlaylist) =
+    rememberPlaylistShuffle(sortedSongs, lazyListState) { queue ->
+      playerConnection.playQueue(
+        ListQueue(
+          title = context.getString(R.string.cached_playlist),
+          items = queue.map { it.toMediaItem() },
+        )
+      )
+    }
+
   LaunchedEffect(isSearching) {
     if (isSearching) {
       focusRequester.requestFocus()
@@ -199,6 +212,8 @@ fun CachePlaylistScreen(
   ) {
     LazyColumn(
       state = lazyListState,
+      // The playlist itself turns during a shuffle spin, so it may not be dragged while it does.
+      userScrollEnabled = !shuffleRoulette.running,
       contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
     ) {
       if (filteredSongs.isEmpty() && !isSearching) {
@@ -224,6 +239,7 @@ fun CachePlaylistScreen(
           item(key = "playlist_header") {
             CachePlaylistHeader(
               songs = filteredSongs,
+              onShuffle = shufflePlaylist,
               context = context,
               menuState = menuState,
               modifier = Modifier.animateItem()
@@ -441,12 +457,15 @@ fun CachePlaylistScreen(
         }
       }
     )
+
+    PlaylistShuffleOverlay(shuffleRoulette)
   }
 }
 
 @Composable
 private fun CachePlaylistHeader(
   songs: List<Song>,
+  onShuffle: () -> Unit,
   context: android.content.Context,
   menuState: app.music.backend.sonari.ui.component.MenuState,
   modifier: Modifier = Modifier
@@ -553,14 +572,7 @@ private fun CachePlaylistHeader(
       }
 
       TextButton(
-        onClick = {
-          playerConnection.playQueue(
-            ListQueue(
-              title = context.getString(R.string.cached_playlist),
-              items = songs.shuffled().map { it.toMediaItem() },
-            )
-          )
-        },
+        onClick = onShuffle,
         modifier = Modifier.weight(1f).height(48.dp),
         shape = androidx.compose.foundation.shape.CircleShape,
         colors =

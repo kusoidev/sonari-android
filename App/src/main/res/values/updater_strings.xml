@@ -77,6 +77,11 @@
     <string name="on_latest_version">You\'re on the latest version</string>
     <string name="current_version_v">Current version: %1$s</string>
     <string name="update_to_v">Update available %1$s</string>
+    <string name="update_versions">You\'re on %1$s · latest is %2$s</string>
+    <string name="update_dialog_title">New update available</string>
+    <string name="update_dialog_body">To enjoy our newest features, tap the button below.</string>
+    <string name="update_dialog_update">Update the app</string>
+    <string name="update_dialog_later">Not now</string>
     <string name="new_update">New update</string>
     <string name="release_date_v">Released on: %1$s</string>
     <string name="update_size_v">Size: %1$s MB</string>

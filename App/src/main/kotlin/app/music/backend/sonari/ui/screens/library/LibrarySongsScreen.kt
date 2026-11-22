@@ -131,10 +131,6 @@ fun LibrarySongsScreen(
   }
 
   val lazyListState = rememberLazyListState()
-  // Where the list starts on screen. The wheel is centred in the list area, which sits well below
-  // the middle of the screen, so it is shifted up by half this distance to sit dead centre.
-  var listTopPx by remember { mutableFloatStateOf(0f) }
-  val centreOnScreen = { IntOffset(0, -(listTopPx / 2f).roundToInt()) }
 
   val backStackEntry by navController.currentBackStackEntryAsState()
   val scrollToTop =
@@ -155,8 +151,8 @@ fun LibrarySongsScreen(
     }
 
   // The shuffle FAB lives next to the library's add button in LibraryScreen; it bumps the
-  // roulette tick and this screen spins the wheel once for that tap, then queues the whole library
-  // in the order the wheel came up with, winner first.
+  // roulette tick and this screen spins the list once for that tap, then queues the whole library
+  // in the order the spin came up with, winner first.
   val currentSongs by rememberUpdatedState(filteredSongs)
   val currentLibrary by rememberUpdatedState(librarySongs)
   LaunchedEffect(roulette?.tick) {
@@ -165,9 +161,10 @@ fun LibrarySongsScreen(
     if (!state.claim(state.tick)) return@LaunchedEffect
     if (currentSongs.isEmpty()) return@LaunchedEffect
     val order = currentSongs.shuffled()
-    val winnerIndex = Random.nextInt(order.size)
-    state.spin(order, winnerIndex)
-    val queue = order.drop(winnerIndex) + order.take(winnerIndex)
+    val winnerRow = state.spin(lazyListState, 0, currentSongs.size)
+    if (winnerRow !in currentSongs.indices) return@LaunchedEffect
+    val at = order.indexOfFirst { it.id == currentSongs[winnerRow].id }.coerceAtLeast(0)
+    val queue = order.drop(at) + order.take(at)
     playerConnection.playQueue(
       ListQueue(
         title = context.getString(R.string.queue_all_songs),
@@ -256,16 +253,13 @@ fun LibrarySongsScreen(
           Modifier.fillMaxWidth()
             .weight(1f)
             .clipToBounds()
-            .onGloballyPositioned { listTopPx = it.positionInRoot().y }
       ) {
         LazyColumn(
           state = lazyListState,
           contentPadding = PaddingValues(bottom = listInsets.calculateBottomPadding()),
-          // The list steps back while the wheel turns, so its rows never show through the wheel's,
-          // and comes back exactly where the user left it once the wheel is done.
-          modifier =
-            Modifier.fillMaxSize()
-              .graphicsLayer { alpha = 1f - (roulette?.frost ?: 0f) },
+          // The playlist itself is what turns, so it may not be scrolled by hand while it does.
+          userScrollEnabled = roulette?.running != true,
+          modifier = Modifier.fillMaxSize(),
         ) {
           itemsIndexed(
             items = filteredSongs,
@@ -353,13 +347,10 @@ fun LibrarySongsScreen(
         }
 
         roulette?.let { state ->
-          ShuffleWheel(state, Modifier.matchParentSize().offset { centreOnScreen() })
+          ShuffleNeedleOverlay(state, Modifier.matchParentSize())
         }
         roulette?.let { state ->
-          ShuffleNeedleOverlay(state, Modifier.matchParentSize().offset { centreOnScreen() })
-        }
-        roulette?.let { state ->
-          ShuffleConfetti(state, Modifier.matchParentSize().offset { centreOnScreen() })
+          ShuffleConfetti(state, Modifier.matchParentSize())
         }
       }
     }
@@ -413,5 +404,8 @@ fun LibrarySongsScreen(
         windowInsets = WindowInsets(0.dp)
       )
     }
+
+    // Nothing on the screen may be touched while the wheel is turning.
+    roulette?.let { state -> ShuffleInputBlocker(state) }
   }
 }

@@ -33,8 +33,8 @@ android {
     applicationId = "com.kusoi.sonari"
     minSdk = 26
     targetSdk = 36
-    versionCode = 169
-    versionName = "1.4.8"
+    versionCode = 170
+    versionName = "1.5.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables.useSupportLibrary = true
@@ -350,4 +350,9 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
   testImplementation(libs.robolectric)
+
+  // Local UI tests for the screens that cannot be checked by eye.
+  androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.10.2")
+  androidTestImplementation("androidx.test.ext:junit:1.2.1")
+  debugImplementation("androidx.compose.ui:ui-test-manifest:1.10.2")
 }

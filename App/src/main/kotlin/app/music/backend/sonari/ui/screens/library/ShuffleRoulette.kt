@@ -10,6 +10,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -17,65 +18,59 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import app.music.backend.sonari.R
 import app.music.backend.sonari.db.entities.Song
-import app.music.backend.sonari.ui.component.SongListItem
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.sin
-import kotlin.math.roundToInt
-import kotlin.math.sin
+import kotlin.random.Random
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import nl.dionsegijn.konfetti.compose.KonfettiView
 import nl.dionsegijn.konfetti.core.Party
 import nl.dionsegijn.konfetti.core.Position
 import nl.dionsegijn.konfetti.core.emitter.Emitter
 
-/** How many rows either side of the middle the wheel still draws. */
-private const val WHEEL_REACH = 4
+/** How few rows a spin is allowed to turn over before it winds up first. */
+private const val MIN_TRAVEL_ROWS = 14f
 
 /**
- * Shared between the library screen's shuffle FAB and the songs screen. The FAB only calls [begin];
- * the songs screen answers a fresh [tick] once with a spin, so leaving and re-entering the list
- * never starts a wheel of its own.
+ * The shuffle spin, over the real list. [spin] rolls the playlist itself through its songs with one
+ * long ease-out and stops on the winning row: the rows that fly past are the playlist's own rows,
+ * drawn by the playlist's own list. Nothing is drawn in place of the list.
  *
- * The wheel is drawn over the list rather than scrolling it: the list never moves, nothing on the
- * screen shakes, and the order it spins through wraps without a seam, which is what made a scrolled
- * wheel look like two separate runs.
+ * While it runs, [running] is true, and the screens stop the list from being scrolled or tapped, so
+ * nothing can be moved until the spin has finished.
  */
 class ShuffleRouletteState {
   var tick by mutableIntStateOf(0)
@@ -86,11 +81,11 @@ class ShuffleRouletteState {
 
   private var claimedTick by mutableIntStateOf(0)
 
-  /** True while the wheel is on screen. */
+  /** True while the list is rolling. */
   var visible by mutableStateOf(false)
     private set
 
-  /** True once the wheel has stopped on a song, while its confetti is going off. */
+  /** True once the list has stopped on a song, while its confetti is going off. */
   var landed by mutableStateOf(false)
     private set
 
@@ -98,20 +93,9 @@ class ShuffleRouletteState {
   var frost by mutableFloatStateOf(0f)
     private set
 
-  /** How fast the wheel is turning, 0..1: drives the smear and how hard the brackets hit. */
+  /** How fast the list is moving, 0..1: drives how hard the brackets are knocked. */
   var speed by mutableFloatStateOf(0f)
     private set
-
-  /** Which song the wheel is on, as a continuous index into [order]: its rotation position. */
-  var position by mutableFloatStateOf(0f)
-    private set
-
-  /** The order the wheel spins through, which is also the queue that follows the winner. */
-  var order by mutableStateOf<List<Song>>(emptyList())
-    private set
-
-  /** Height of one row as the list draws it, measured from the first row that lands. */
-  var rowHeightPx by mutableFloatStateOf(0f)
 
   /** Called by the shuffle FAB. Ignored while a spin is already running. */
   fun begin() {
@@ -129,143 +113,211 @@ class ShuffleRouletteState {
   }
 
   /**
-   * Spins through [order] and stops on the song at [winnerIndex], then leaves the winner on screen
-   * for a moment while the confetti goes off.
+   * Rolls [listState] and hands back which song ends up between the brackets: whatever the payline
+   * holds is the winner, so the spin can never stop on a row the brackets are not on.
    *
-   * One continuous ease-out from the first frame to the last: the wheel starts fast enough to smear,
-   * slows the whole way, and stops exactly on the winner because the rotation position ends on its
-   * index. Nothing is measured, so it cannot miss.
+   * The roll aims at a random song being held at the payline. Once that row is on screen the roll
+   * stops trusting units altogether and glides the row itself onto the payline in measured pixels,
+   * so a tall header or rows of odd sizes cannot leave the landing short. If the list runs against
+   * its end before that row can be centred - the last songs of a playlist cannot reach a payline
+   * that sits above them - the roll takes the nearest row above the payline instead, which can be
+   * centred exactly, and that row is the winner.
    */
-  internal suspend fun spin(order: List<Song>, winnerIndex: Int) {
-    if (running || order.isEmpty()) return
+  internal suspend fun spin(
+    listState: LazyListState,
+    headerItems: Int,
+    songCount: Int,
+  ): Int {
+    if (running || songCount <= 0) return -1
+    val rowPx = songRowPxOf(listState, headerItems)
+    if (rowPx <= 0f) return -1
+
     running = true
     visible = true
     landed = false
-    this.order = order
-    position = 0f
     speed = 0f
-    val songs = order.size
-    val laps = if (songs > 20) 3 else 2
-    val target = (winnerIndex + laps * songs).toFloat()
-    val durationMs = (2200f + songs * 4f).coerceIn(2400f, 3200f)
     val frostAnim = Animatable(0f)
 
     try {
-      frostAnim.animateTo(1f, tween(240)) { frost = value }
+      frostAnim.animateTo(1f, tween(200)) { frost = value }
 
-      val start = withFrameNanos { it }
-      var previousFrame = start
-      var previousPosition = 0f
-      while (true) {
-        val now = withFrameNanos { it }
-        val t = ((now - start) / 1_000_000f / durationMs).coerceIn(0f, 1f)
-        val inverse = 1f - t
-        position = target * (1f - inverse * inverse * inverse)
-        val seconds = ((now - previousFrame) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
-        previousFrame = now
-        speed = ((position - previousPosition) / seconds / 40f).coerceIn(0f, 1f)
-        previousPosition = position
-        if (t >= 1f) break
+      // Where the payline sits in song-row units, measured from the content start: a row's middle
+      // is what has to land on it, not its edge.
+      val layout = listState.layoutInfo
+      val paylineRows =
+        ((layout.viewportSize.height / 2f) - layout.beforeContentPadding) / rowPx
+      val targetRow = headerItems + Random.nextInt(songCount)
+      val target = targetRow + 0.5f - paylineRows
+      var start = currentRow(listState, rowPx)
+
+      // A row already sitting under the brackets would barely move. Pull the list back first and
+      // let it roll in, so every spin turns over real rows rather than twitching by two.
+      if (abs(target - start) < MIN_TRAVEL_ROWS) {
+        val windUp = if (target >= start) -MIN_TRAVEL_ROWS else MIN_TRAVEL_ROWS
+        roll(listState, start + windUp, 220f, -1, headerItems)
+        start = currentRow(listState, rowPx)
       }
 
-      position = target
+      val rows = abs(target - start)
+      val durationMs = (1500f + rows * 12f).coerceIn(1500f, 2800f)
+      roll(listState, target, durationMs, targetRow, headerItems)
+
       speed = 0f
+      val winner = paylineSong(listState, headerItems, songCount)
       landed = true
       delay(900)
 
-      frostAnim.animateTo(0f, tween(320)) { frost = value }
+      frostAnim.animateTo(0f, tween(300)) { frost = value }
+      return winner
     } finally {
       running = false
       visible = false
       landed = false
       frost = 0f
       speed = 0f
-      position = 0f
-      this.order = emptyList()
     }
   }
-}
 
-/**
- * The wheel itself: a column of song titles turning past the middle of the screen, the one between
- * the brackets full size and bright while the rows either side of it shrink and fade away.
- *
- * The rows are keyed by their slot number and read the rotation position only in the layout and
- * draw phases, so a fast spin moves them without recomposing every row on every frame.
- */
-@Composable
-fun BoxScope.ShuffleWheel(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
-  if (!state.visible) return
-  val songs = state.order
-  if (songs.isEmpty()) return
+  /**
+   * Which song the brackets are holding, read out of the layout once the list has stopped.
+   *
+   * Nothing moves here: the roll has already eased a row into place between the brackets, so this
+   * only names what stopped there. Reading it instead of keeping the intended index means a list
+   * that clamped at either end still reports the row it really stopped on.
+   */
+  private fun paylineSong(
+    listState: LazyListState,
+    headerItems: Int,
+    songCount: Int,
+  ): Int {
+    val row = rowAt(listState.layoutInfo) ?: return 0
+    return row.songIndex(headerItems, songCount)
+  }
 
-  val count = songs.size
-  val fallbackRowPx = with(LocalDensity.current) { 72.dp.toPx() }
-  // Quantised so the blur is rebuilt a handful of times over the spin instead of every frame.
-  val smear = 14.dp * (((state.speed * 4f).roundToInt() / 4f))
-  val restingRowPx = if (state.rowHeightPx > 0f) state.rowHeightPx else fallbackRowPx
+  /** The row the payline cuts through, or the one nearest to it when it lands in a gap. */
+  private fun rowAt(layout: LazyListLayoutInfo): LazyListItemInfo? {
+    val paylineInContent = layout.viewportSize.height / 2f - layout.beforeContentPadding
+    return layout.visibleItemsInfo.firstOrNull {
+      it.offset <= paylineInContent && it.offset + it.size > paylineInContent
+    } ?: layout.visibleItemsInfo.minByOrNull {
+      abs(it.offset + it.size / 2f - paylineInContent)
+    }
+  }
 
-  Box(
-    modifier =
-      modifier
-        .graphicsLayer { alpha = state.frost }
-        .then(if (smear > 0.4.dp) Modifier.blur(smear) else Modifier),
-    contentAlignment = Alignment.Center,
+  /** Which song a row stands for, kept inside the songs when the payline meets a header. */
+  private fun LazyListItemInfo.songIndex(headerItems: Int, songCount: Int): Int =
+    (index - headerItems).coerceIn(0, songCount - 1)
+
+  /**
+   * One continuous ease-out of the real list towards [target], a position in song-row units (3.5 is
+   * halfway between the third and fourth song). While [targetRow] is on screen the eased fraction is
+   * applied to the distance measured from the row itself to the payline, re-read every frame, so the
+   * last pixels always belong to that row: a roll that only trusted units would land wherever the
+   * units guessed, this lands on what is actually there.
+   */
+  private suspend fun roll(
+    listState: LazyListState,
+    target: Float,
+    durationMs: Float,
+    targetRow: Int,
+    headerItems: Int,
   ) {
-    Box(
-      modifier =
-        Modifier.fillMaxWidth(0.96f)
-          .height(with(LocalDensity.current) { restingRowPx.toDp() })
-          .clip(RoundedCornerShape(18.dp))
-          .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-    )
+    val startFrame = withFrameNanos { it }
+    var previousFrame = startFrame
+    var previousT = 0f
+    var aimRow = targetRow
+    val startRow = currentRow(listState, songRowPxOf(listState, headerItems))
+    while (true) {
+      val now = withFrameNanos { it }
+      val t = ((now - startFrame) / 1_000_000f / durationMs).coerceIn(0f, 1f)
+      val inverse = 1f - t
+      val eased = 1f - inverse * inverse * inverse
+      val rowPx = songRowPxOf(listState, headerItems)
+      if (rowPx <= 0f) break
+      val targetInfo =
+        if (aimRow >= 0) listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == aimRow }
+        else null
 
-    val rowPx = if (state.rowHeightPx > 0f) state.rowHeightPx else fallbackRowPx
-    val first = floor(state.position).toInt() - WHEEL_REACH
-    val last = ceil(state.position).toInt() + WHEEL_REACH
-    for (row in first..last) {
-      key(row) {
-        val song = songs[((row % count) + count) % count]
-        Box(
-          modifier =
-            Modifier.fillMaxWidth()
-              .offset { IntOffset(0, ((row - state.position) * rowPx).roundToInt()) }
-              .graphicsLayer {
-                val distance = abs(row - state.position)
-                val falloff = (distance / 2.4f).coerceIn(0f, 1f)
-                val scale = 1f - 0.22f * falloff
-                scaleX = scale
-                scaleY = scale
-                alpha = 1f - 0.7f * falloff
-              },
-        ) {
-          // The row the list would draw, so the wheel shows the cover, the liked and library
-          // badges, the artist, the length and the size exactly as the list does.
-          SongListItem(
-            song = song,
-            isSwipeable = false,
-            showDownloadIcon = false,
-            showSize = true,
-            shape = RoundedCornerShape(12.dp),
-            trailingContent = {
-              Icon(painter = painterResource(R.drawable.more_vert), contentDescription = null)
-            },
-            modifier =
-              Modifier.fillMaxWidth().onGloballyPositioned { coords ->
-                val height = coords.size.height.toFloat()
-                if (height > 0f && height != state.rowHeightPx) state.rowHeightPx = height
-              },
-          )
+      val deltaPx =
+        if (targetInfo != null) {
+          // The row the roll is reaching for is on screen: consume the eased fraction of what is
+          // actually left between it and the payline. The cap keeps one hitchy frame from turning
+          // its share of the distance into a jump.
+          val paylinePx =
+            listState.layoutInfo.viewportSize.height / 2f - listState.layoutInfo.beforeContentPadding
+          val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
+          val previousEased =
+            1f - (1f - previousT) * (1f - previousT) * (1f - previousT)
+          val fraction =
+            if (eased >= 1f) 1f else (eased - previousEased) / (1f - previousEased)
+          remainingPx * fraction.coerceIn(0f, 0.35f)
+        } else {
+          // The aim row has not scrolled into view yet: approximate in row units until it is,
+          // and let the measured tail take over the moment it is.
+          val wanted = startRow + (target - startRow) * eased
+          (wanted - currentRow(listState, rowPx)) * rowPx
         }
+
+      val consumed =
+        if (abs(deltaPx) >= 0.5f) listState.scrollBy(deltaPx) else deltaPx
+      if (aimRow >= 0 && deltaPx > 0.5f && consumed < deltaPx - 0.5f) {
+        // The list has run against its end clamp with the aim row still short of the payline: that
+        // row can never be centred on it, because the list has nothing left to give. The row above
+        // the payline still can - it is glided in with a backwards roll - so what stops between the
+        // brackets is exactly centred rather than hanging half a row low.
+        val paylineRow = rowAt(listState.layoutInfo)
+        val next = (paylineRow?.index ?: aimRow) - 1
+        if (next >= headerItems) aimRow = next
       }
+      val seconds = ((now - previousFrame) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+      speed = (abs(deltaPx) / seconds / 8000f).coerceIn(0f, 1f)
+      previousT = t
+      previousFrame = now
+      if (t >= 1f) break
+    }
+    settleOnPayline(listState, aimRow)
+    speed = 0f
+  }
+
+  /**
+   * The last few pixels of a landing, measured. A dropped or hitchy frame during the roll can leave
+   * a little distance; this finishes the glide over a couple of quiet frames instead of jumping, and
+   * never fights a list that has clamped at one of its ends.
+   */
+  private suspend fun settleOnPayline(listState: LazyListState, targetRow: Int) {
+    if (targetRow < 0) return
+    repeat(8) {
+      val info = listState.layoutInfo
+      val targetInfo = info.visibleItemsInfo.firstOrNull { it.index == targetRow } ?: return
+      val paylinePx = info.viewportSize.height / 2f - info.beforeContentPadding
+      val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
+      if (abs(remainingPx) < 0.5f) return
+      val step = if (abs(remainingPx) > 1f) remainingPx * 0.5f else remainingPx
+      val consumed = listState.scrollBy(step)
+      if (abs(consumed) < abs(step) * 0.5f) return
+      withFrameNanos { }
     }
   }
+
+  /** Where the list is, in song-row units: 3.5 means halfway through the fourth row. */
+  private fun currentRow(listState: LazyListState, rowPx: Float): Float {
+    if (rowPx <= 0f) return listState.firstVisibleItemIndex.toFloat()
+    return listState.firstVisibleItemIndex + listState.firstVisibleItemScrollOffset / rowPx
+  }
+
+  /**
+   * Height of a song row as the list draws it, measured from what is on screen. A header at the top
+   * of the viewport is skipped, so its greater height is never mistaken for a song row's.
+   */
+  private fun songRowPxOf(listState: LazyListState, headerItems: Int): Float =
+    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index >= headerItems }?.size?.toFloat()
+      ?: listState.layoutInfo.visibleItemsInfo.firstOrNull()?.size?.toFloat()
+      ?: 0f
 }
 
 /**
- * Frosted edges for the wheel, anchored to the very top and bottom of the screen instead of the top
- * of the list, so there is no hard edge where the header ends. Only the songs sit behind it: the
- * chips and the sort row are drawn over it and stay crisp.
+ * Frosted edges for the spin, anchored to the very top and bottom of the screen instead of the top
+ * of the list, so the middle of the playlist stays clear while the edges fade away.
  */
 @Composable
 fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
@@ -304,10 +356,9 @@ fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier
 }
 
 /**
- * The "> song <" brackets around the middle of the wheel. Every row that turns past knocks one of
+ * The "> song <" brackets around the middle of the list. Every row that turns past knocks one of
  * them, and the knock lands from above: the bracket is driven down first and springs back up over
- * its rest, then settles. The two trade the blows half a beat apart, harder the faster the wheel
- * runs.
+ * its rest, then settles. The two trade the blows half a beat apart, harder the faster the list runs.
  */
 @Composable
 fun BoxScope.ShuffleNeedleOverlay(
@@ -345,9 +396,9 @@ fun BoxScope.ShuffleNeedleOverlay(
 
 @Composable
 private fun BracketMark(speed: Float, phase: Float, pointsRight: Boolean) {
-  // A song is knocked down into the wheel, so it hits the bracket from above and the bracket gives
-  // way downwards: a quick dip, then a spring back up past its rest and a settle. Catching a rock
-  // in an open hand does the same thing - the hand drops first, it never pops up to meet it.
+  // A song is knocked down into the brackets, so it hits from above and the bracket gives way
+  // downwards: a quick dip, then a spring back up past its rest and a settle. Catching a rock in an
+  // open hand does the same thing - the hand drops first, it never pops up to meet it.
   // The sine starts at zero rather than at its peak, so the very first movement is the dip, and the
   // decaying envelope keeps the first dip the deepest.
   val beat = phase - floor(phase)
@@ -382,7 +433,8 @@ private fun BracketMark(speed: Float, phase: Float, pointsRight: Boolean) {
   }
 }
 
-/** A burst of confetti out of the middle of the wheel once it has stopped on a song. */@Composable
+/** A burst of confetti out of the middle of the list once it has stopped on a song. */
+@Composable
 fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
   if (!state.landed) return
   val parties =
@@ -398,4 +450,84 @@ fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = M
       )
     )
   KonfettiView(modifier = modifier.fillMaxSize(), parties = parties)
+}
+
+/** How many items a playlist puts before its songs: the header and the sort row. */
+private const val PLAYLIST_HEADER_ITEMS = 2
+
+/**
+ * The playlist side of the spin. A playlist's Shuffle button calls the returned action, which rolls
+ * the playlist's own list to a random song and only then hands the winner-first order to [onQueue],
+ * so what starts playing is what the list actually stopped on.
+ *
+ * The state is what the screen draws with [PlaylistShuffleOverlay], and [ShuffleRouletteState.running]
+ * is what keeps the list from being scrolled while it turns.
+ */
+@Composable
+fun rememberPlaylistShuffle(
+  songs: List<Song>,
+  listState: LazyListState,
+  headerItems: Int = PLAYLIST_HEADER_ITEMS,
+  onQueue: (List<Song>) -> Unit,
+): Pair<ShuffleRouletteState, () -> Unit> {
+  val roulette = remember { ShuffleRouletteState() }
+  val scope = rememberCoroutineScope()
+  val currentSongs by rememberUpdatedState(songs)
+  val currentOnQueue by rememberUpdatedState(onQueue)
+  val currentHeaderItems by rememberUpdatedState(headerItems)
+  val shuffle: () -> Unit = {
+    val songsNow = currentSongs
+    if (songsNow.isNotEmpty()) {
+      scope.launch {
+        val order = songsNow.shuffled()
+        val winnerRow = roulette.spin(listState, currentHeaderItems, songsNow.size)
+        if (winnerRow in songsNow.indices) {
+          // What the brackets came to rest on plays first, then everything else in shuffled order.
+          val at = order.indexOfFirst { it.id == songsNow[winnerRow].id }.coerceAtLeast(0)
+          currentOnQueue(order.drop(at) + order.take(at))
+        }
+      }
+    }
+  }
+  return roulette to shuffle
+}
+
+/**
+ * While the list turns, nothing under it may be touched: no scrolling, no taps, no swipes, no
+ * reordering. Drawn over the screen, it swallows every pointer event until the spin has landed, and
+ * the screens additionally stop their list from scrolling while [ShuffleRouletteState.running].
+ */
+@Composable
+fun BoxScope.ShuffleInputBlocker(state: ShuffleRouletteState) {
+  if (!state.visible) return
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(Color.Transparent)
+        .pointerInput(Unit) {
+          awaitPointerEventScope {
+            while (true) {
+              val event = awaitPointerEvent(PointerEventPass.Initial)
+              event.changes.forEach { it.consume() }
+            }
+          }
+        }
+  )
+}
+
+/**
+ * Everything the spin draws over a playlist: the frosted edges, the brackets at the needle, the
+ * confetti when it lands, and a blocker so the screen cannot be touched until it stops. The playlist
+ * itself is what turns, so there is nothing to draw over it.
+ *
+ * Draw it last inside the playlist screen's root Box.
+ */
+@Composable
+fun BoxScope.PlaylistShuffleOverlay(state: ShuffleRouletteState) {
+  if (state.frost <= 0.01f && !state.visible) return
+  ShuffleFrostOverlay(state, Modifier.fillMaxSize())
+  if (!state.visible) return
+  ShuffleNeedleOverlay(state, Modifier.fillMaxSize())
+  ShuffleConfetti(state, Modifier.fillMaxSize())
+  ShuffleInputBlocker(state)
 }

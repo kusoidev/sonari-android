@@ -96,6 +96,7 @@ class App : Application(), SingletonImageLoader.Factory {
     CrashHandler.install(this)
 
     AppContextHolder.initialize(this)
+    app.music.backend.sonari.utils.IconUtils.ensureLaunchableIcon(this)
     NewEpisodesWorker.schedule(this)
     app.music.backend.sonari.utils.cipher.CipherDeobfuscator.initialize(this)
     app.music.backend.sonari.utils.YTPlayerUtils.initialize()

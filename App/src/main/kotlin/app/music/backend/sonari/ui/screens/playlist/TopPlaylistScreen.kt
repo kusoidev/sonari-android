@@ -101,6 +101,8 @@ import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.SelectionSongMenu
 import app.music.backend.sonari.ui.menu.SongMenu
+import app.music.backend.sonari.ui.screens.library.PlaylistShuffleOverlay
+import app.music.backend.sonari.ui.screens.library.rememberPlaylistShuffle
 import app.music.backend.sonari.ui.menu.TopPlaylistMenu
 import app.music.backend.sonari.ui.utils.backToMain
 import app.music.backend.sonari.utils.listItemShape
@@ -184,6 +186,7 @@ fun TopPlaylistScreen(
   val sortType by viewModel.topPeriod.collectAsState()
   val name = stringResource(R.string.my_top) + " $maxSize"
 
+
   val downloadUtil = LocalDownloadUtil.current
   var downloadState by remember { mutableIntStateOf(Download.STATE_STOPPED) }
 
@@ -241,11 +244,21 @@ fun TopPlaylistScreen(
 
   val state = rememberLazyListState()
 
+  // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
+  val (shuffleRoulette, shufflePlaylist) =
+    rememberPlaylistShuffle(songs.orEmpty(), state) { queue ->
+      playerConnection.playQueue(
+        ListQueue(title = name, items = queue.map { it.toMediaItem() })
+      )
+    }
+
   Box(
     modifier = Modifier.fillMaxSize(),
   ) {
     LazyColumn(
       state = state,
+      // The playlist itself turns during a shuffle spin, so it may not be dragged while it does.
+      userScrollEnabled = !shuffleRoulette.running,
       contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
     ) {
       if (songs != null) {
@@ -262,6 +275,7 @@ fun TopPlaylistScreen(
               TopPlaylistHeader(
                 name = name,
                 songs = songs!!,
+                onShuffle = shufflePlaylist,
                 likeLength = likeLength,
                 downloadState = downloadState,
                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
@@ -484,6 +498,8 @@ fun TopPlaylistScreen(
         }
       }
     )
+
+    PlaylistShuffleOverlay(shuffleRoulette)
   }
 }
 
@@ -491,6 +507,7 @@ fun TopPlaylistScreen(
 private fun TopPlaylistHeader(
   name: String,
   songs: List<Song>,
+  onShuffle: () -> Unit,
   likeLength: Int,
   downloadState: Int,
   onShowRemoveDownloadDialog: () -> Unit,
@@ -556,14 +573,7 @@ private fun TopPlaylistHeader(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Button(
-          onClick = {
-            playerConnection.playQueue(
-              ListQueue(
-                title = name,
-                items = songs.shuffled().map { it.toMediaItem() },
-              )
-            )
-          },
+          onClick = onShuffle,
           shape = ButtonDefaults.shape,
           colors =
             ButtonDefaults.buttonColors(

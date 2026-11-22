@@ -151,6 +151,8 @@ import app.music.backend.sonari.ui.menu.CustomThumbnailMenu
 import app.music.backend.sonari.ui.menu.LocalPlaylistMenu
 import app.music.backend.sonari.ui.menu.SelectionSongMenu
 import app.music.backend.sonari.ui.menu.SongMenu
+import app.music.backend.sonari.ui.screens.library.PlaylistShuffleOverlay
+import app.music.backend.sonari.ui.screens.library.rememberPlaylistShuffle
 import app.music.backend.sonari.ui.screens.settings.DarkMode
 import app.music.backend.sonari.ui.utils.backToMain
 import app.music.backend.sonari.utils.launchSafely
@@ -190,6 +192,7 @@ fun LocalPlaylistScreen(
 
   val playlist by viewModel.playlist.collectAsState()
   val songs by viewModel.playlistSongs.collectAsState()
+
 
   val mutableSongs = remember { mutableStateListOf<PlaylistSong>() }
   val playlistLength = remember(songs) { songs.fastSumBy { it.song.song.duration } }
@@ -413,6 +416,17 @@ fun LocalPlaylistScreen(
 
   val headerItems = 2
   val lazyListState = rememberLazyListState()
+
+  // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
+  val (shuffleRoulette, shufflePlaylist) =
+    rememberPlaylistShuffle(songs.map { it.song }, lazyListState) { queue ->
+      playerConnection.playQueue(
+        ListQueue(
+          title = playlist?.playlist?.name.orEmpty(),
+          items = queue.map { it.toMediaItem() },
+        )
+      )
+    }
   var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
   val reorderableState =
     rememberReorderableLazyListState(
@@ -465,6 +479,8 @@ fun LocalPlaylistScreen(
   ) {
     LazyColumn(
       state = lazyListState,
+      // The playlist itself turns during a shuffle spin, so it may not be dragged while it does.
+      userScrollEnabled = !shuffleRoulette.running,
       contentPadding =
         LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
     ) {
@@ -483,6 +499,7 @@ fun LocalPlaylistScreen(
               LocalPlaylistHeader(
                 playlist = playlist,
                 songs = songs,
+                onShuffle = shufflePlaylist,
                 onShowEditDialog = { showEditDialog = true },
                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                 onshowDeletePlaylistDialog = { showDeletePlaylistDialog = true },
@@ -867,6 +884,8 @@ fun LocalPlaylistScreen(
         Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime))
           .align(Alignment.BottomCenter),
     )
+
+    PlaylistShuffleOverlay(shuffleRoulette)
   }
 }
 
@@ -874,6 +893,7 @@ fun LocalPlaylistScreen(
 fun LocalPlaylistHeader(
   playlist: Playlist,
   songs: List<PlaylistSong>,
+  onShuffle: () -> Unit,
   onShowEditDialog: () -> Unit,
   onShowRemoveDownloadDialog: () -> Unit,
   onshowDeletePlaylistDialog: () -> Unit,
@@ -1264,14 +1284,7 @@ fun LocalPlaylistHeader(
       }
 
       TextButton(
-        onClick = {
-          playerConnection.playQueue(
-            ListQueue(
-              title = playlist.playlist.name,
-              items = songs.shuffled().map { it.song.toMediaItem() },
-            )
-          )
-        },
+        onClick = onShuffle,
         modifier = Modifier.weight(1f).height(48.dp),
         shape = CircleShape,
         colors =

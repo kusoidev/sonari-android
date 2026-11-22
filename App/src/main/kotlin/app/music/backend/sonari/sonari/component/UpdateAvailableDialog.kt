@@ -1,211 +1,173 @@
 package app.music.backend.sonari.sonari.component
 
-import android.content.Intent
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.music.backend.sonari.R
-import app.music.backend.sonari.sonari.updater.ChangelogSection
-import app.music.backend.sonari.ui.utils.parseMarkdownToSections
-import app.music.backend.sonari.ui.utils.parseSimpleMarkdown
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 
 /**
- * Displays a dialog informing the user that a newer version of the application is available.
+ * The update prompt, laid out like the reference: one card in the middle of the screen, the download
+ * mark with a red dot saying something is waiting, a line about what it is for, where the user
+ * stands next to where they could be, and one button to go and get it.
  *
- * @param version The latest version tag or display string.
- * @param changelog Pre-parsed structured changelog sections, if available.
- * @param description Raw release description or fallback Markdown text.
- * @param onDismiss Invoked when the user dismisses the dialog.
+ * "Not now" (or the close mark) puts that release off, so the prompt comes back only when a newer
+ * one ships.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpdateAvailableDialog(
-  version: String,
-  changelog: List<ChangelogSection>,
-  description: String?,
-  onDismiss: () -> Unit
+  currentVersion: String,
+  latestVersion: String,
+  onUpdate: () -> Unit,
+  onDismiss: () -> Unit,
 ) {
-  val context = LocalContext.current
-  val cardShape =
-    AbsoluteSmoothCornerShape(
-      cornerRadiusTL = 30.dp,
-      cornerRadiusTR = 30.dp,
-      cornerRadiusBL = 30.dp,
-      cornerRadiusBR = 30.dp,
-      smoothnessAsPercentTL = 60,
-      smoothnessAsPercentTR = 60,
-      smoothnessAsPercentBL = 60,
-      smoothnessAsPercentBR = 60,
-    )
-  val blockShape = AbsoluteSmoothCornerShape(22.dp, 60)
-  val actionShape = AbsoluteSmoothCornerShape(18.dp, 60)
-
-  BasicAlertDialog(onDismissRequest = onDismiss) {
+  Dialog(
+    onDismissRequest = onDismiss,
+    properties = DialogProperties(usePlatformDefaultWidth = false),
+  ) {
     Surface(
-      modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
-      shape = cardShape,
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp),
+      shape = AbsoluteSmoothCornerShape(32.dp, 60),
       color = MaterialTheme.colorScheme.surfaceContainerHigh,
-      tonalElevation = 8.dp,
+      tonalElevation = 6.dp,
     ) {
-      Column(
-        modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-      ) {
-        Surface(
-          shape = blockShape,
-          color = MaterialTheme.colorScheme.surfaceContainer,
+      Box {
+        Column(
+          modifier =
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 30.dp, bottom = 18.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-          Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-          ) {
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Surface(
-                shape = AbsoluteSmoothCornerShape(12.dp, 60),
-                color = MaterialTheme.colorScheme.primaryContainer,
-              ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                  Icon(
-                    painter = painterResource(R.drawable.update),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(16.dp),
-                  )
-                  Text(
-                    text = stringResource(R.string.update_available_title),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                  )
-                }
-              }
-            }
+          UpdateMark()
 
+          Spacer(Modifier.height(22.dp))
+
+          Text(
+            text = stringResource(R.string.update_dialog_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+          )
+
+          Spacer(Modifier.height(10.dp))
+
+          Text(
+            text = stringResource(R.string.update_dialog_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+          )
+
+          Spacer(Modifier.height(14.dp))
+
+          Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+          ) {
             Text(
-              text = "Version $version is available",
-              style = MaterialTheme.typography.titleLarge,
-              fontWeight = FontWeight.Bold,
+              text = stringResource(R.string.update_versions, currentVersion, latestVersion),
+              style = MaterialTheme.typography.labelLarge,
+              fontWeight = FontWeight.Medium,
+              color = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+          }
+
+          Spacer(Modifier.height(22.dp))
+
+          Button(
+            onClick = onUpdate,
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth().height(54.dp),
+          ) {
+            Text(
+              text = stringResource(R.string.update_dialog_update),
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.SemiBold,
+            )
+          }
+
+          Spacer(Modifier.height(2.dp))
+
+          TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+            Text(
+              text = stringResource(R.string.update_dialog_later),
+              style = MaterialTheme.typography.titleSmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
           }
         }
 
-        if (changelog.isNotEmpty() || !description.isNullOrEmpty()) {
-          Surface(
-            modifier = Modifier.weight(1f, fill = false),
-            shape = blockShape,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-          ) {
-            Column(
-              modifier =
-                Modifier.fillMaxWidth().padding(14.dp).verticalScroll(rememberScrollState()),
-              verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-              Text(
-                text = stringResource(R.string.changelog),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-              )
-
-              val (effectiveDescription, effectiveSections) =
-                remember(changelog, description) {
-                  if (changelog.isNotEmpty()) {
-                    Pair(description?.takeIf { it.isNotBlank() }, changelog)
-                  } else if (!description.isNullOrBlank()) {
-                    parseMarkdownToSections(description)
-                  } else {
-                    Pair(null, emptyList())
-                  }
-                }
-
-              if (!effectiveDescription.isNullOrBlank()) {
-                Text(
-                  text =
-                    parseSimpleMarkdown(effectiveDescription, MaterialTheme.colorScheme.primary),
-                  style = MaterialTheme.typography.bodyMedium,
-                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  modifier = Modifier.padding(bottom = 4.dp)
-                )
-              }
-
-              if (effectiveSections.isNotEmpty()) {
-                effectiveSections.forEach { section ->
-                  if (section.title.isNotBlank()) {
-                    Text(
-                      text = section.title,
-                      style = MaterialTheme.typography.titleSmall,
-                      fontWeight = FontWeight.Bold,
-                      color = MaterialTheme.colorScheme.primary,
-                      modifier = Modifier.padding(top = 6.dp)
-                    )
-                  }
-                  section.items.forEach { item ->
-                    Row(
-                      modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                      horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                      Text(
-                        text = "•",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                      )
-                      Text(
-                        text = parseSimpleMarkdown(item.trim(), MaterialTheme.colorScheme.primary),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
-                      )
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.End,
+        IconButton(
+          onClick = onDismiss,
+          modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp),
         ) {
-          TextButton(
-            onClick = onDismiss,
-            shape = actionShape,
-          ) {
-            Text(text = "Next time")
-          }
-          Spacer(modifier = Modifier.width(8.dp))
-          Button(
-            onClick = {
-              onDismiss()
-              val intent =
-                Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://sonari.fun"))
-              context.startActivity(intent)
-            },
-            shape = actionShape,
-          ) {
-            Text(text = "Update")
-          }
+          Icon(
+            painter = painterResource(R.drawable.close),
+            contentDescription = stringResource(R.string.update_dialog_later),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+          )
         }
       }
+    }
+  }
+}
+
+/**
+ * The download mark from the reference: a soft disc, a big arrow, and a red dot on its corner
+ * saying the release is waiting.
+ */
+@Composable
+private fun UpdateMark() {
+  Box(modifier = Modifier.size(98.dp), contentAlignment = Alignment.Center) {
+    Box(
+      modifier =
+        Modifier.size(86.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f), CircleShape)
+    )
+    Icon(
+      painter = painterResource(R.drawable.update),
+      contentDescription = null,
+      tint = MaterialTheme.colorScheme.primary,
+      modifier = Modifier.size(52.dp),
+    )
+    Box(
+      modifier =
+        Modifier.align(Alignment.BottomEnd)
+          .size(28.dp)
+          .background(MaterialTheme.colorScheme.error, CircleShape),
+      contentAlignment = Alignment.Center,
+    ) {
+      Text(
+        text = "!",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onError,
+      )
     }
   }
 }

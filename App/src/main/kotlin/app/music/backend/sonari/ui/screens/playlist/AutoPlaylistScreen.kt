@@ -111,6 +111,8 @@ import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.AutoPlaylistMenu
 import app.music.backend.sonari.ui.menu.SelectionSongMenu
 import app.music.backend.sonari.ui.menu.SongMenu
+import app.music.backend.sonari.ui.screens.library.PlaylistShuffleOverlay
+import app.music.backend.sonari.ui.screens.library.rememberPlaylistShuffle
 import app.music.backend.sonari.ui.utils.backToMain
 import app.music.backend.sonari.utils.listItemShape
 import app.music.backend.sonari.utils.makeTimeString
@@ -147,6 +149,7 @@ fun AutoPlaylistScreen(
     }
 
   val songs by viewModel.likedSongs.collectAsState(null)
+
   val mutableSongs = remember { mutableStateListOf<Song>() }
 
   var isSearching by remember { mutableStateOf(false) }
@@ -296,6 +299,14 @@ fun AutoPlaylistScreen(
   }
 
   val state = rememberLazyListState()
+
+  // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
+  val (shuffleRoulette, shufflePlaylist) =
+    rememberPlaylistShuffle(songs.orEmpty(), state) { queue ->
+      playerConnection?.playQueue(
+        ListQueue(title = playlist, items = queue.map { it.toMediaItem() })
+      )
+    }
   var headerHeightPx by remember { mutableIntStateOf(0) }
 
   val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -338,6 +349,8 @@ fun AutoPlaylistScreen(
 
     LazyColumn(
       state = state,
+      // The playlist itself turns during a shuffle spin, so it may not be dragged while it does.
+      userScrollEnabled = !shuffleRoulette.running,
       contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
     ) {
       if (songs != null) {
@@ -354,6 +367,7 @@ fun AutoPlaylistScreen(
               AutoPlaylistHeader(
                 name = playlist,
                 songs = songs!!,
+                onShuffle = shufflePlaylist,
                 likeLength = likeLength,
                 downloadState = downloadState,
                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
@@ -597,6 +611,8 @@ fun AutoPlaylistScreen(
           )
         }
     )
+
+    PlaylistShuffleOverlay(shuffleRoulette)
   }
 }
 
@@ -604,6 +620,7 @@ fun AutoPlaylistScreen(
 private fun AutoPlaylistHeader(
   name: String,
   songs: List<Song>,
+  onShuffle: () -> Unit,
   likeLength: Int,
   downloadState: Int,
   onShowRemoveDownloadDialog: () -> Unit,
@@ -663,14 +680,7 @@ private fun AutoPlaylistHeader(
         verticalAlignment = Alignment.CenterVertically
       ) {
         androidx.compose.material3.Button(
-          onClick = {
-            playerConnection?.playQueue(
-              ListQueue(
-                title = name,
-                items = songs.shuffled().map { it.toMediaItem() },
-              ),
-            )
-          },
+          onClick = onShuffle,
           shape = androidx.compose.material3.ButtonDefaults.shape,
           colors =
             androidx.compose.material3.ButtonDefaults.buttonColors(
