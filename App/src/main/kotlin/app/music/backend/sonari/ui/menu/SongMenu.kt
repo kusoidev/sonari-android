@@ -451,6 +451,22 @@ fun SongMenu(
                 }
               )
             } else null,
+            if (song.song.isLocal) {
+              Material3MenuItemData(
+                title = { Text(text = stringResource(R.string.tag_edit_entry)) },
+                description = { Text(text = stringResource(R.string.tag_edit_entry_desc)) },
+                icon = {
+                  Icon(
+                    painter = painterResource(R.drawable.edit),
+                    contentDescription = null,
+                  )
+                },
+                onClick = {
+                  onDismiss()
+                  navController.navigate("tag_editor/${android.net.Uri.encode(song.id)}")
+                }
+              )
+            } else null,
             Material3MenuItemData(
               title = { Text(text = stringResource(R.string.edit)) },
               description = { Text(text = stringResource(R.string.edit_song)) },

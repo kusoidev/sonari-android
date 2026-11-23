@@ -1022,4 +1022,14 @@
     <string name="dup_delete_file">Delete this file</string>
     <string name="dup_deleted">File deleted</string>
     <string name="dup_delete_failed">Could not delete the file</string>
+
+    <!-- Tag editor -->
+    <string name="tag_edit_entry">Edit tags</string>
+    <string name="tag_edit_entry_desc">Change the tags written in the file</string>
+    <string name="tag_editor_title">Edit tags</string>
+    <string name="tag_editor_desc">These are written into the file itself, then the library follows.</string>
+    <string name="tag_album">Album</string>
+    <string name="tag_year">Year</string>
+    <string name="tag_saved">Tags saved to the file</string>
+    <string name="tag_failed">Could not write the tags</string>
 </resources>

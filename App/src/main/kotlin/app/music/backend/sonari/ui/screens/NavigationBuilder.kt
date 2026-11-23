@@ -36,6 +36,7 @@ import app.music.backend.sonari.ui.screens.generate.GenerateScreen
 import app.music.backend.sonari.ui.screens.library.DuplicatesScreen
 import app.music.backend.sonari.ui.screens.library.LibraryScreen
 import app.music.backend.sonari.ui.screens.library.LocalSongScreen
+import app.music.backend.sonari.ui.screens.library.TagEditorScreen
 import app.music.backend.sonari.ui.screens.playlist.AutoPlaylistScreen
 import app.music.backend.sonari.ui.screens.playlist.BottomPlaylistScreen
 import app.music.backend.sonari.ui.screens.playlist.CachePlaylistScreen
@@ -110,6 +111,16 @@ fun NavGraphBuilder.navigationBuilder(
   composable("local_songs") { LocalSongScreen(navController) }
 
   composable("local_duplicates") { DuplicatesScreen(navController) }
+
+  composable(
+    route = "tag_editor/{songId}",
+    arguments = listOf(navArgument("songId") { type = NavType.StringType }),
+  ) { backStackEntry ->
+    TagEditorScreen(
+      navController = navController,
+      songId = backStackEntry.arguments?.getString("songId").orEmpty(),
+    )
+  }
 
   composable("stats") { StatsScreen(navController) }
 
