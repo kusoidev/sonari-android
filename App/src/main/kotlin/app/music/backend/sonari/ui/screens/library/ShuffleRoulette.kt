@@ -479,13 +479,18 @@ fun rememberPlaylistShuffle(
         // confetti; done here, it is spread over a screen that is already moving.
         val order = withContext(Dispatchers.Default) { songsNow.shuffled() }
         val items = withContext(Dispatchers.Default) { order.map { it.toMediaItem() } }
+        var landedRow = -1
+        // The row is lit the moment the list stops, but the player is handed the queue only once
+        // the spin is over: the mini player sliding in changes the list's insets, and doing that
+        // while the list is still settling is what made the songs bob up and down.
         roulette.spin(listState, currentHeaderItems, songsNow.size) { winnerRow ->
-          if (winnerRow in songsNow.indices) {
-            roulette.pick(songsNow[winnerRow].id)
-            // What the list came to rest on plays first, then everything else in shuffled order.
-            val at = order.indexOfFirst { it.id == songsNow[winnerRow].id }.coerceAtLeast(0)
-            currentOnQueue(items.drop(at) + items.take(at))
-          }
+          landedRow = winnerRow
+          if (winnerRow in songsNow.indices) roulette.pick(songsNow[winnerRow].id)
+        }
+        if (landedRow in songsNow.indices) {
+          // What the list came to rest on plays first, then everything else in shuffled order.
+          val at = order.indexOfFirst { it.id == songsNow[landedRow].id }.coerceAtLeast(0)
+          currentOnQueue(items.drop(at) + items.take(at))
         }
       }
     }

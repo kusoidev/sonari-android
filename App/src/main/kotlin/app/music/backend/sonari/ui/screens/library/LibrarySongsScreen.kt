@@ -166,19 +166,22 @@ fun LibrarySongsScreen(
     // the frame the spin stops, which is the jerk right before the confetti.
     val order = withContext(Dispatchers.Default) { currentSongs.shuffled() }
     val items = withContext(Dispatchers.Default) { order.map { it.toMediaItem() } }
-    // Playback starts the moment the list lands on a song, so that song's row is lit as the playing one.
+    var landedRow = -1
+    // The row is lit the moment the list stops, but the player is handed the queue only once the
+    // spin is over: the mini player sliding in changes the list's insets, and doing that while the
+    // list is still settling is what made the songs bob up and down.
     state.spin(lazyListState, 0, currentSongs.size) { winnerRow ->
-      if (winnerRow in currentSongs.indices) {
-        state.pick(currentSongs[winnerRow].id)
-        val at = order.indexOfFirst { it.id == currentSongs[winnerRow].id }.coerceAtLeast(0)
-        val queue = items.drop(at) + items.take(at)
-        playerConnection.playQueue(
-          ListQueue(
-            title = context.getString(R.string.queue_all_songs),
-            items = queue,
-          ),
-        )
-      }
+      landedRow = winnerRow
+      if (winnerRow in currentSongs.indices) state.pick(currentSongs[winnerRow].id)
+    }
+    if (landedRow in currentSongs.indices) {
+      val at = order.indexOfFirst { it.id == currentSongs[landedRow].id }.coerceAtLeast(0)
+      playerConnection.playQueue(
+        ListQueue(
+          title = context.getString(R.string.queue_all_songs),
+          items = items.drop(at) + items.take(at),
+        ),
+      )
     }
   }
 
