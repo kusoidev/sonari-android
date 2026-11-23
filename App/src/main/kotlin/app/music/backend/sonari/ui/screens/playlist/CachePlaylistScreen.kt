@@ -91,6 +91,7 @@ import app.music.backend.sonari.ui.component.EmptyPlaceholder
 import app.music.backend.sonari.ui.component.ExpandableText
 import app.music.backend.sonari.ui.component.IconButton
 import app.music.backend.sonari.ui.component.LocalMenuState
+import app.music.backend.sonari.ui.component.SoftTopEdge
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.CachePlaylistMenu
@@ -350,6 +351,13 @@ fun CachePlaylistScreen(
           .align(Alignment.CenterEnd),
       scrollState = lazyListState,
       headerItems = 2
+    )
+
+    // The top of the list melts into the background instead of being sliced by the edge of
+    // the scroll area, so the header slides away smoothly under the bar.
+    SoftTopEdge(
+      listState = lazyListState,
+      modifier = Modifier.align(Alignment.TopCenter),
     )
 
     TopAppBar(

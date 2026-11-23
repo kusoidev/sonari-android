@@ -106,6 +106,7 @@ import app.music.backend.sonari.ui.component.DraggableScrollbar
 import app.music.backend.sonari.ui.component.EmptyPlaceholder
 import app.music.backend.sonari.ui.component.IconButton
 import app.music.backend.sonari.ui.component.LocalMenuState
+import app.music.backend.sonari.ui.component.SoftTopEdge
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.AutoPlaylistMenu
@@ -498,6 +499,13 @@ fun AutoPlaylistScreen(
             .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues()),
       )
     }
+
+    // The top of the list melts into the background instead of being sliced by the edge of
+    // the scroll area, so the header slides away smoothly under the bar.
+    SoftTopEdge(
+      listState = state,
+      modifier = Modifier.align(Alignment.TopCenter),
+    )
 
     TopAppBar(
       title = {

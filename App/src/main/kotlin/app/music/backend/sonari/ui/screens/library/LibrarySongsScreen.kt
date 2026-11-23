@@ -73,6 +73,7 @@ import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.ui.component.ChipsRow
 import app.music.backend.sonari.ui.component.LocalMenuState
+import app.music.backend.sonari.ui.component.SoftTopEdge
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.SelectionSongMenu
@@ -345,6 +346,14 @@ fun LibrarySongsScreen(
             )
           }
         }
+
+        // The list is clipped where the header ends, so its top rows fade out there
+        // instead of ending on a hard line.
+        SoftTopEdge(
+          listState = lazyListState,
+          height = 56.dp,
+          modifier = Modifier.align(Alignment.TopCenter),
+        )
 
         roulette?.let { state ->
           ShuffleNeedleOverlay(state, Modifier.matchParentSize())
