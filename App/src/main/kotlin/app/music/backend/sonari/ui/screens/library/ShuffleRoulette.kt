@@ -243,24 +243,29 @@ class ShuffleRouletteState {
       val eased = 1f - inverse * inverse * inverse * inverse * inverse
       val rowPx = songRowPxOf(listState, headerItems)
       if (rowPx <= 0f) break
+      // One read of the layout per frame: the row being aimed at and the payline are measured from
+      // the same snapshot, so the last pixels cannot disagree about where the line is.
+      val layout = listState.layoutInfo
       val targetInfo =
-        if (aimRow >= 0) listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == aimRow }
-        else null
+        if (aimRow >= 0) layout.visibleItemsInfo.firstOrNull { it.index == aimRow } else null
 
       val deltaPx =
         if (targetInfo != null) {
           // The row the roll is reaching for is on screen: consume the eased fraction of what is
           // actually left between it and the payline. The cap keeps one hitchy frame from turning
           // its share of the distance into a jump.
-          val paylinePx =
-            listState.layoutInfo.viewportSize.height / 2f - listState.layoutInfo.beforeContentPadding
+          val paylinePx = layout.viewportSize.height / 2f - layout.beforeContentPadding
           val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
           val previousEased =
             1f - (1f - previousT) * (1f - previousT) * (1f - previousT) * (1f - previousT) *
               (1f - previousT)
+          // On the roll's own last frame the whole remainder is taken, so the list comes to rest on
+          // the line inside the ease itself. Anything left for a correction afterwards is a second
+          // little move after the list has already stopped, which is what read as a shiver.
           val fraction =
-            if (eased >= 1f) 1f else (eased - previousEased) / (1f - previousEased)
-          remainingPx * fraction.coerceIn(0f, 0.35f)
+            if (t >= 1f || eased >= 1f) 1f
+            else (eased - previousEased) / (1f - previousEased)
+          remainingPx * fraction.coerceIn(0f, if (t >= 1f) 1f else 0.35f)
         } else {
           // The aim row has not scrolled into view yet: approximate in row units until it is,
           // and let the measured tail take over the moment it is.
@@ -285,62 +290,28 @@ class ShuffleRouletteState {
       previousFrame = now
       if (t >= 1f) break
     }
-    overshootThenSettle(listState, aimRow)
+    // Straight onto the line. It used to roll a few pixels past it and glide back, and that
+    // bounce was the whole list bobbing up and down just before the confetti.
+    settleOnPayline(listState, aimRow)
     speed = 0f
   }
 
   /**
-   * A wheel does not stop dead on the line: it rolls a hair past it and eases back. This carries the
-   * winning row a few pixels beyond the payline and lets [settleOnPayline] bring it back, so the stop
-   * reads as the list settling instead of as a cut. The extra pixels are taken back at once when the
-   * list is against one of its ends and refuses them, because then there is nothing to roll into.
-   */
-  private suspend fun overshootThenSettle(listState: LazyListState, targetRow: Int) {
-    if (targetRow >= 0) {
-      val info = listState.layoutInfo
-      val targetInfo = info.visibleItemsInfo.firstOrNull { it.index == targetRow }
-      if (targetInfo != null) {
-        val paylinePx = info.viewportSize.height / 2f - info.beforeContentPadding
-        val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
-        // Only roll past the line when the row is already there; a long distance left over by a
-        // hitchy frame is not something to overshoot, it is something to settle.
-        if (abs(remainingPx) > targetInfo.size) {
-          settleOnPayline(listState, targetRow)
-          return
-        }
-        val overshoot =
-          (targetInfo.size * 0.07f).coerceIn(3f, 18f) * if (remainingPx >= 0f) 1f else -1f
-        val wanted = remainingPx + overshoot
-        if (abs(wanted) >= 0.5f) {
-          val consumed = listState.scrollBy(wanted)
-          if (abs(consumed) < abs(wanted) - 0.5f) {
-            // Clamped at an end: undo the part of the overshoot that did land, and settle exactly.
-            listState.scrollBy(-overshoot)
-          }
-        }
-      }
-    }
-    settleOnPayline(listState, targetRow)
-  }
-
-  /**
-   * The last few pixels of a landing, measured. A dropped or hitchy frame during the roll can leave
-   * a little distance; this finishes the glide over a couple of quiet frames instead of jumping, and
-   * never fights a list that has clamped at one of its ends.
+   * The last pixel of a landing, measured. The roll already takes whatever it has left on its final
+   * frame, so this only tidies a residual a dropped frame may have left behind - and it does it in a
+   * single move, on the frame after the roll. It used to halve the gap over several frames, which
+   * looked like the list crawling into place, and a slow crawl after the list has stopped reads as a
+   * shiver. A list clamped at one of its ends simply takes less, and nothing here fights it.
    */
   private suspend fun settleOnPayline(listState: LazyListState, targetRow: Int) {
     if (targetRow < 0) return
-    repeat(8) {
-      val info = listState.layoutInfo
-      val targetInfo = info.visibleItemsInfo.firstOrNull { it.index == targetRow } ?: return
-      val paylinePx = info.viewportSize.height / 2f - info.beforeContentPadding
-      val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
-      if (abs(remainingPx) < 0.5f) return
-      val step = if (abs(remainingPx) > 1f) remainingPx * 0.5f else remainingPx
-      val consumed = listState.scrollBy(step)
-      if (abs(consumed) < abs(step) * 0.5f) return
-      withFrameNanos { }
-    }
+    val info = listState.layoutInfo
+    val targetInfo = info.visibleItemsInfo.firstOrNull { it.index == targetRow } ?: return
+    val paylinePx = info.viewportSize.height / 2f - info.beforeContentPadding
+    val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
+    if (abs(remainingPx) < 0.5f) return
+    // Half a row at most: a bigger gap means the list is against an end and has nothing to give.
+    listState.scrollBy(remainingPx.coerceIn(-targetInfo.size / 2f, targetInfo.size / 2f))
   }
 
   /** Where the list is, in song-row units: 3.5 means halfway through the fourth row. */
