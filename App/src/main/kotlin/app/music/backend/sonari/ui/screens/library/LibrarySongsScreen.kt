@@ -162,16 +162,19 @@ fun LibrarySongsScreen(
     if (!state.claim(state.tick)) return@LaunchedEffect
     if (currentSongs.isEmpty()) return@LaunchedEffect
     val order = currentSongs.shuffled()
-    val winnerRow = state.spin(lazyListState, 0, currentSongs.size)
-    if (winnerRow !in currentSongs.indices) return@LaunchedEffect
-    val at = order.indexOfFirst { it.id == currentSongs[winnerRow].id }.coerceAtLeast(0)
-    val queue = order.drop(at) + order.take(at)
-    playerConnection.playQueue(
-      ListQueue(
-        title = context.getString(R.string.queue_all_songs),
-        items = queue.map { it.toMediaItem() },
-      ),
-    )
+    // Playback starts the moment the list lands on a song, so that song's row is lit as the playing one.
+    state.spin(lazyListState, 0, currentSongs.size) { winnerRow ->
+      if (winnerRow in currentSongs.indices) {
+        val at = order.indexOfFirst { it.id == currentSongs[winnerRow].id }.coerceAtLeast(0)
+        val queue = order.drop(at) + order.take(at)
+        playerConnection.playQueue(
+          ListQueue(
+            title = context.getString(R.string.queue_all_songs),
+            items = queue.map { it.toMediaItem() },
+          ),
+        )
+      }
+    }
   }
 
   val listInsets = LocalPlayerAwareWindowInsets.current.asPaddingValues()

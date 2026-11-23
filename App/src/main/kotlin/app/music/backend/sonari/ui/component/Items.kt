@@ -144,12 +144,16 @@ inline fun ListItem(
   color: Color = Color.Transparent,
   verticalPadding: Dp = 2.dp,
 ) {
+  // A row that is playing, or picked by a shuffle, is drawn as its own rounded pill whatever the
+  // grouping of the list says, so the highlight never ends on a hard edge.
+  val highlighted = isActive || (isSelected == true && drawHighlight)
+  val rowShape = if (highlighted) RoundedCornerShape(16.dp) else shape
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier =
       Modifier.padding(vertical = verticalPadding)
         .padding(horizontal = horizontalPadding)
-        .clip(shape)
+        .clip(rowShape)
         .background(
           color =
             when {

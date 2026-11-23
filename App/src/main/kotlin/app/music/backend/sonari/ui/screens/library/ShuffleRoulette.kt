@@ -111,6 +111,7 @@ class ShuffleRouletteState {
     listState: LazyListState,
     headerItems: Int,
     songCount: Int,
+    onLanded: (Int) -> Unit = {},
   ): Int {
     if (running || songCount <= 0) return -1
     val rowPx = songRowPxOf(listState, headerItems)
@@ -149,6 +150,9 @@ class ShuffleRouletteState {
       speed = 0f
       val winner = paylineSong(listState, headerItems, songCount)
       landed = true
+      // The song the list stopped on starts playing now, so its row is lit as the spin ends rather
+      // than after the confetti has had its moment.
+      onLanded(winner)
       delay(900)
 
       frostAnim.animateTo(0f, tween(300)) { frost = value }
@@ -440,11 +444,12 @@ fun rememberPlaylistShuffle(
     if (songsNow.isNotEmpty()) {
       scope.launch {
         val order = songsNow.shuffled()
-        val winnerRow = roulette.spin(listState, currentHeaderItems, songsNow.size)
-        if (winnerRow in songsNow.indices) {
-          // What the brackets came to rest on plays first, then everything else in shuffled order.
-          val at = order.indexOfFirst { it.id == songsNow[winnerRow].id }.coerceAtLeast(0)
-          currentOnQueue(order.drop(at) + order.take(at))
+        roulette.spin(listState, currentHeaderItems, songsNow.size) { winnerRow ->
+          if (winnerRow in songsNow.indices) {
+            // What the list came to rest on plays first, then everything else in shuffled order.
+            val at = order.indexOfFirst { it.id == songsNow[winnerRow].id }.coerceAtLeast(0)
+            currentOnQueue(order.drop(at) + order.take(at))
+          }
         }
       }
     }
