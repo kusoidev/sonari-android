@@ -73,7 +73,6 @@ import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.ui.component.ChipsRow
 import app.music.backend.sonari.ui.component.LocalMenuState
-import app.music.backend.sonari.ui.component.softTopEdgeFade
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.SelectionSongMenu
@@ -264,7 +263,7 @@ fun LibrarySongsScreen(
           contentPadding = PaddingValues(bottom = listInsets.calculateBottomPadding()),
           // The playlist itself is what turns, so it may not be scrolled by hand while it does.
           userScrollEnabled = roulette?.running != true,
-          modifier = Modifier.fillMaxSize().softTopEdgeFade(lazyListState),
+          modifier = Modifier.fillMaxSize(),
         ) {
           itemsIndexed(
             items = filteredSongs,

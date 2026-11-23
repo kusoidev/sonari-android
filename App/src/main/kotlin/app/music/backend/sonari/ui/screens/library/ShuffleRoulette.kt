@@ -424,7 +424,9 @@ fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = M
         damping = 0.9f,
         spread = 360,
         colors = listOf(0xfce18a, 0xff726d, 0xf4306d, 0xb48def, 0x4cd7f0),
-        emitter = Emitter(duration = 260, TimeUnit.MILLISECONDS).max(180),
+        // Kept small on purpose: this goes off at the same instant playback starts, and a
+        // screenful of particles is what makes the app stutter right after it picks a song.
+        emitter = Emitter(duration = 200, TimeUnit.MILLISECONDS).max(70),
         position = Position.Relative(0.5, 0.5),
       )
     )

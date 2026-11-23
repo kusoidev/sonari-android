@@ -106,7 +106,6 @@ import app.music.backend.sonari.ui.component.DraggableScrollbar
 import app.music.backend.sonari.ui.component.EmptyPlaceholder
 import app.music.backend.sonari.ui.component.IconButton
 import app.music.backend.sonari.ui.component.LocalMenuState
-import app.music.backend.sonari.ui.component.softTopEdgeFade
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.AutoPlaylistMenu
@@ -336,13 +335,13 @@ fun AutoPlaylistScreen(
       // songs and melts into the background at the bottom, so it never ends on a hard line.
       app.music.backend.sonari.ui.component.OnlineBlur(
         thumbnailUrl = songs!!.first().thumbnailUrl,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxWidth().height(headerHeight + 260.dp)
       )
     }
 
     LazyColumn(
       state = state,
-      modifier = Modifier.fillMaxSize().softTopEdgeFade(state),
+      modifier = Modifier.fillMaxSize(),
       // The playlist itself turns during a shuffle spin, so it may not be dragged while it does.
       userScrollEnabled = !shuffleRoulette.running,
       contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),

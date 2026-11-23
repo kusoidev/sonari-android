@@ -303,7 +303,7 @@ fun OnlinePlaylistScreen(
       // bottom, so it never ends on a hard line.
       OnlineBlur(
         thumbnailUrl = currentPlaylist.thumbnail,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxWidth().height(headerHeight + 260.dp)
       )
     }
 
