@@ -3024,9 +3024,14 @@ fun BottomSheetPlayer(
                     Modifier.animateContentSize()
                       .graphicsLayer {
                         // The cover itself travels into the queue's header, drawn on top of the
-                        // sheet: this one is only the copy it leaves behind, so it steps aside as
-                        // the travelling one takes over - no shrink into the corner, no fade.
-                        alpha = 1f - smoothStep(0f, 0.06f, queueSheetState.progress.coerceIn(0f, 1f))
+                        // sheet: this one is the copy it is drawn over, and it only steps aside
+                        // once the travelling copy is solid on top of it. It never goes half see-
+                        // through: two covers at half opacity let the screen through, and that is
+                        // the blink at each end of the move.
+                        alpha =
+                          if (artworkUrl != null &&
+                              artworkCarried(queueSheetState.progress.coerceIn(0f, 1f))) 0f
+                          else 1f
                       },
                   isPlayerExpanded = isExpandedProvider,
                   isLandscape = true,
@@ -3106,9 +3111,14 @@ fun BottomSheetPlayer(
                     Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
                       .graphicsLayer {
                         // The cover itself travels into the queue's header, drawn on top of the
-                        // sheet: this one is only the copy it leaves behind, so it steps aside as
-                        // the travelling one takes over - no shrink into the corner, no fade.
-                        alpha = 1f - smoothStep(0f, 0.06f, queueSheetState.progress.coerceIn(0f, 1f))
+                        // sheet: this one is the copy it is drawn over, and it only steps aside
+                        // once the travelling copy is solid on top of it. It never goes half see-
+                        // through: two covers at half opacity let the screen through, and that is
+                        // the blink at each end of the move.
+                        alpha =
+                          if (artworkUrl != null &&
+                              artworkCarried(queueSheetState.progress.coerceIn(0f, 1f))) 0f
+                          else 1f
                       },
                   isPlayerExpanded = isExpandedProvider,
                   isListenTogetherGuest = isListenTogetherGuest,

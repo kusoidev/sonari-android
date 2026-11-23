@@ -757,9 +757,10 @@ fun Queue(
                 .graphicsLayer {
                   val p = state.progress.coerceIn(0f, 1f)
                   if (artworkFlight?.player != null) {
-                    // The travelling cover is drawn on top of the sheet, and this one only takes
-                    // over once it has landed here - the fade happens between two identical covers.
-                    alpha = artworkHandoff(p)
+                    // Solid from the moment the travelling cover has landed on this slot, and hidden
+                    // before that - never half transparent underneath a half transparent travelling
+                    // cover, which is what let the screen show through and blink at the change-over.
+                    alpha = if (slotHoldsCover(p)) 1f else 0f
                   } else {
                     // Nothing to carry the cover from (the player is showing lyrics, say): the slot
                     // brings itself in as it always did.

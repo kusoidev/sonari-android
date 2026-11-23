@@ -72,11 +72,32 @@ private const val SHRINK_START = 0.24f
 private const val SHRINK_END = 0.74f
 
 /**
- * The queue header's own cover only appears in the last stretch, once the travelling cover has
- * arrived on the slot and the two are the same rectangle: the change-over is a fade between two
- * identical covers, so there is nothing to see it happen.
+ * How far into the drag the travelling cover has taken the cover over from the copy the player
+ * draws. It fades in *on top of* that copy, which never dims: two copies at half opacity are not one
+ * opaque cover - the screen behind them shows through - and that dip in solidity is the blink you
+ * see at each end of the move. So one copy is always solid, and the other only ever fades over it.
  */
+internal const val COVER_HANDED_OVER = 0.06f
+
+/** From here the queue header's own copy is solid under the travelling one. */
+internal const val SLOT_TAKES_COVER = TRAVEL_END
+
+/** How far into the drag the queue's slot has become the solid copy of the cover. */
 internal fun artworkHandoff(progress: Float): Float = smoothStep(0.85f, 1f, progress)
+
+/** Has the travelling copy taken the cover over from the player's own? */
+internal fun artworkCarried(progress: Float): Boolean = progress >= COVER_HANDED_OVER
+
+/** Is the queue header's copy of the cover solid yet? */
+internal fun slotHoldsCover(progress: Float): Boolean = progress >= SLOT_TAKES_COVER
+
+/**
+ * The travelling copy's opacity: it fades in over the player's copy, stays solid while it flies, and
+ * fades out over the queue's copy in the header.
+ */
+internal fun artworkFlightAlpha(progress: Float): Float =
+  if (progress < COVER_HANDED_OVER) smoothStep(0f, COVER_HANDED_OVER, progress)
+  else 1f - artworkHandoff(progress)
 
 /**
  * The one cover that travels. Drawn on top of the sheet, so it is never clipped by the queue rising
@@ -100,8 +121,7 @@ fun ArtworkFlightOverlay(
   // Read here, in this composable's own scope: the drag recomposes this one small overlay and
   // nothing else in the player.
   val slide = progress().coerceIn(0f, 1f)
-  val appear = smoothStep(0f, 0.05f, slide)
-  val alpha = appear * (1f - artworkHandoff(slide))
+  val alpha = artworkFlightAlpha(slide)
 
   // Even at zero alpha the cover stays composed: the image is loaded and ready while the queue is
   // still shut, so the first frame it is needed in is a frame it can already draw. Unmounting it
