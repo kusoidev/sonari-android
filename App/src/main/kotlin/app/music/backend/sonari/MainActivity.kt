@@ -220,6 +220,11 @@ import app.music.backend.sonari.ui.component.*
 import app.music.backend.sonari.ui.component.AppFloatingNavBar
 import app.music.backend.sonari.ui.component.GlassEffectConfig
 import app.music.backend.sonari.ui.component.LocalAppBackdrop
+import app.music.backend.sonari.ui.component.LocalLiquidState
+import app.music.backend.sonari.ui.component.isGlassLowEnd
+import app.music.backend.sonari.ui.component.isGlassSupported
+import io.github.fletchmckee.liquid.liquefiable
+import io.github.fletchmckee.liquid.rememberLiquidState
 import app.music.backend.sonari.ui.component.LocalGlassEffectConfig
 import app.music.backend.sonari.ui.component.RingtoneProgressDialog
 import app.music.backend.sonari.ui.component.RingtoneTrimmerDialog
@@ -1418,6 +1423,15 @@ class MainActivity : ComponentActivity() {
           drawContent()
         }
 
+        // The liquid glass source. The screen content is tagged liquefiable below and the chrome
+        // (nav bar, mini player) samples it through the liquid shaders; when the effect is off, or
+        // the platform is too old for it, nothing is tagged and the chrome keeps its own pipeline.
+        val liquidState = rememberLiquidState()
+        // Sampling the screen into a second layer costs real GPU time, so a low-RAM phone or a
+        // phone in power saving keeps the cheaper pipeline it already had instead.
+        val liquidSampling =
+          glassEffectConfig.globalEnabled && isGlassSupported() && !remember { isGlassLowEnd(this@MainActivity) }
+
         val ringtoneViewModel: RingtoneViewModel = viewModel()
         val ringtoneUiState by ringtoneViewModel.uiState.collectAsState()
 
@@ -1444,6 +1458,7 @@ class MainActivity : ComponentActivity() {
           LocalHapticFeedback provides customHapticFeedback,
           LocalGlassEffectConfig provides glassEffectConfig,
           LocalAppBackdrop provides appBackdrop,
+          LocalLiquidState provides if (liquidSampling) liquidState else null,
           LocalRingtoneViewModel provides ringtoneViewModel,
           LocalDatabase provides database,
           LocalContentColor provides
@@ -1916,6 +1931,7 @@ class MainActivity : ComponentActivity() {
                     },
                     modifier =
                       Modifier.layerBackdrop(appBackdrop)
+                        .then(if (liquidSampling) Modifier.liquefiable(liquidState) else Modifier)
                         .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
                   ) {
                     navigationBuilder(
