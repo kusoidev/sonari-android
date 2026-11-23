@@ -60,10 +60,6 @@ fun Material3SettingsGroup(
     }
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      // The rows are one glass panel when the effect is on: the container goes transparent so the
-      // blurred backdrop shows through, and each row keeps its place in the group's shape.
-      val glass = LocalGlassEffectConfig.current
-      val glassOn = glass.isEnabledFor(GlassComponent.PANELS)
       items.forEachIndexed { index, item ->
         val shape =
           when {
@@ -86,19 +82,13 @@ fun Material3SettingsGroup(
           }
 
         Card(
-          modifier =
-            Modifier.fillMaxWidth()
-              .animateContentSize()
-              .then(if (glassOn) Modifier.glassPanel(glass, shape) else Modifier),
+          modifier = Modifier.fillMaxWidth().animateContentSize(),
           shape = shape,
           colors =
             CardDefaults.cardColors(
               containerColor =
-                when {
-                  glassOn -> Color.Transparent
-                  item.isHighlighted -> MaterialTheme.colorScheme.surfaceVariant
-                  else -> MaterialTheme.colorScheme.surfaceContainerHigh
-                }
+                if (item.isHighlighted) MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.surfaceContainerHigh
             ),
           elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {

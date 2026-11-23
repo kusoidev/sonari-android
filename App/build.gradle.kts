@@ -256,7 +256,6 @@ dependencies {
   "gmsImplementation"(libs.play.services.location)
 
   implementation(libs.haze)
-  implementation(libs.liquid)
   implementation(libs.guava)
   implementation(libs.coroutines.guava)
   implementation(libs.concurrent.futures)

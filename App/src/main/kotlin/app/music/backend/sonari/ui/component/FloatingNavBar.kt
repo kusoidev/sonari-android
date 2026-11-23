@@ -87,9 +87,8 @@ fun AppFloatingNavBar(
 
   val tabBarContentModifier =
     if (useGlass) {
-      Modifier.sonariLiquid(
+      Modifier.liquidGlass(
         config = glassConfig,
-        component = GlassComponent.NAV_BAR,
         shape = RoundedCornerShape(percent = 50),
       )
     } else {

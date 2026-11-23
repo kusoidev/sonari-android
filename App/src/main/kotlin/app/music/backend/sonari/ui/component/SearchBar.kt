@@ -83,15 +83,8 @@ fun TopSearch(
   focusRequester: FocusRequester = remember { FocusRequester() },
   content: @Composable ColumnScope.() -> Unit = {},
 ) {
-  // The bar is a glass panel over whatever is scrolling underneath it, so the search field reads as
-  // a sheet of glass laid on the screen rather than as a solid strip.
-  val glass = LocalGlassEffectConfig.current
-  val glassOn = glass.isEnabledFor(GlassComponent.PANELS)
   Box(modifier = modifier) {
     TopAppBar(
-      modifier =
-        if (glassOn) Modifier.glassPanel(glass, RoundedCornerShape(0.dp))
-        else Modifier,
       title = {
         SearchBarInputField(
           query = query,
@@ -128,7 +121,7 @@ fun TopSearch(
           trailingIcon()
         }
       },
-      colors = if (glassOn) colors.copy(containerColor = Color.Transparent) else colors,
+      colors = colors,
       scrollBehavior = scrollBehavior,
       windowInsets = windowInsets
     )
