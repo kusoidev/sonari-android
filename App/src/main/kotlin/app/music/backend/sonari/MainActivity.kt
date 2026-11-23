@@ -497,9 +497,30 @@ class MainActivity : ComponentActivity() {
   @OptIn(ExperimentalMaterial3Api::class)
   override fun onCreate(savedInstanceState: Bundle?) {
     introPlays = savedInstanceState == null
-    val splashScreen = installSplashScreen()
-    splashScreen.handOffToLaunchIntro { introPlays }
+
+    // Below Android 12 the compat splash inflates splash_screen_view, and that layout sizes its
+    // icon with ?attr/splashScreenIconSize, an attribute only a Theme.SplashScreen parent
+    // defines. Theme.sonari is not one, so on some devices (a Huawei on Android 10 among them)
+    // the inflate throws UnsupportedOperationException and the activity dies before it starts.
+    // On Android 12 and newer the platform draws the splash and no layout is inflated at all,
+    // which is why only older phones ever hit this. The launch intro is the real boot screen
+    // there anyway, so the splash is set up on 12+ only, and a splash that fails for any other
+    // reason must never be allowed to take the activity down with it.
+    val splashScreen =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        runCatching {
+            installSplashScreen().also { splash -> splash.handOffToLaunchIntro { introPlays } }
+          }
+          .onFailure { timber.log.Timber.tag("LaunchIntro").e(it, "splash screen unavailable") }
+          .getOrNull()
+      } else {
+        null
+      }
+
     if (introPlays) LaunchGate.begin() else LaunchGate.skip()
+    // With no splash waiting to be dismissed, the intro takes off at once instead of idling out
+    // its hand-off timeout.
+    if (splashScreen == null) LaunchGate.onSplashGone()
     super.onCreate(savedInstanceState)
 
     try {
