@@ -110,7 +110,7 @@ fun ShowOffsetDialog(songProvider: () -> SongEntity?) {
             limited == "-" -> {}
             else -> {
               limited.toIntOrNull()?.let { parsedValue ->
-                val clampedValue = parsedValue.coerceIn(-9999, 9999)
+                val clampedValue = parsedValue.coerceIn(-10000, 10000)
                 lyricsOffset = clampedValue
 
                 if (parsedValue != clampedValue) {
@@ -177,7 +177,7 @@ fun ShowOffsetDialog(songProvider: () -> SongEntity?) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
       IconButton(
         onClick = {
-          lyricsOffset = (lyricsOffset - 50).coerceIn(-3000, 3000)
+          lyricsOffset = (lyricsOffset - 50).coerceIn(-10000, 10000)
           textFieldValue = lyricsOffset.toString()
         }
       ) {
@@ -191,14 +191,14 @@ fun ShowOffsetDialog(songProvider: () -> SongEntity?) {
           lyricsOffset = rounded
           textFieldValue = rounded.toString()
         },
-        valueRange = -3000f..3000f,
-        steps = 59,
+        valueRange = -10000f..10000f,
+        steps = 199,
         modifier = Modifier.weight(1f)
       )
 
       IconButton(
         onClick = {
-          lyricsOffset = (lyricsOffset + 50).coerceIn(-3000, 3000)
+          lyricsOffset = (lyricsOffset + 50).coerceIn(-10000, 10000)
           textFieldValue = lyricsOffset.toString()
         }
       ) {
@@ -213,12 +213,12 @@ fun ShowOffsetDialog(songProvider: () -> SongEntity?) {
       modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp)
     ) {
       Text(
-        text = "-3000ms",
+        text = "-10000ms",
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
       Text(
-        text = "+3000ms",
+        text = "+10000ms",
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
