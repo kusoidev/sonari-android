@@ -94,7 +94,7 @@ fun ArtworkFlightOverlay(
   modifier: Modifier = Modifier,
 ) {
   val from = flight.player ?: return
-  val to = flight.queue ?: return
+  val to = flight.queue ?: from
   if (url.isNullOrEmpty()) return
 
   // Read here, in this composable's own scope: the drag recomposes this one small overlay and
@@ -102,8 +102,10 @@ fun ArtworkFlightOverlay(
   val slide = progress().coerceIn(0f, 1f)
   val appear = smoothStep(0f, 0.05f, slide)
   val alpha = appear * (1f - artworkHandoff(slide))
-  if (alpha <= 0.01f) return
 
+  // Even at zero alpha the cover stays composed: the image is loaded and ready while the queue is
+  // still shut, so the first frame it is needed in is a frame it can already draw. Unmounting it
+  // would mean loading it the moment the drag starts, and the empty frame that shows up as a blink.
   val travel = smoothStep(TRAVEL_START, TRAVEL_END, slide)
   val shrink = smoothStep(SHRINK_START, SHRINK_END, slide)
   val centerX = from.rect.center.x + (to.rect.center.x - from.rect.center.x) * travel

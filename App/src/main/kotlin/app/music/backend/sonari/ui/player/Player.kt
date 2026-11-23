@@ -242,6 +242,7 @@ import app.music.backend.sonari.ui.theme.PlayerColorExtractor
 import app.music.backend.sonari.ui.theme.PlayerSliderColors
 import app.music.backend.sonari.ui.utils.ShowMediaInfo
 import app.music.backend.sonari.ui.utils.ShowOffsetDialog
+import app.music.backend.sonari.ui.utils.resize
 import app.music.backend.sonari.innertube.models.PODCAST_BROWSE_PREFIX
 import app.music.backend.sonari.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
 import app.music.backend.sonari.utils.PodcastProgress
@@ -942,6 +943,12 @@ fun BottomSheetPlayer(
   // into this, and the copy drawn on top of the sheet carries it from one to the other.
   val artworkFlight = remember { ArtworkFlight() }
   val artworkCornerRadius by rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 3f)
+  // The one image the artwork, the cover in flight and the queue's own slot all draw. The player
+  // asks for the large variant, so the other two must ask for the same one: two URLs would be two
+  // bitmaps, and a swap between them is exactly what shows up as a flicker.
+  val artworkUrl = remember(mediaMetadata?.thumbnailUrl) {
+    mediaMetadata?.thumbnailUrl?.resize(1200, 1200)
+  }
 
   LaunchedEffect(expandQueueRequested) {
     if (expandQueueRequested) {
@@ -3161,6 +3168,8 @@ fun BottomSheetPlayer(
         playerBackground = playerBackground,
         onToggleLyrics = { showInlineLyrics = !showInlineLyrics },
         artworkFlight = artworkFlight,
+        artworkUrl = artworkUrl,
+        artworkCrop = cropAlbumArt,
       )
     }
 
@@ -3173,7 +3182,7 @@ fun BottomSheetPlayer(
   ArtworkFlightOverlay(
     flight = artworkFlight,
     progress = remember(queueSheetState) { { queueSheetState.progress } },
-    url = mediaMetadata?.thumbnailUrl,
+    url = artworkUrl,
     crop = cropAlbumArt,
     modifier = Modifier.fillMaxSize(),
   )

@@ -102,6 +102,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalClipboard
@@ -179,6 +180,8 @@ fun Queue(
   playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
   onToggleLyrics: () -> Unit = {},
   artworkFlight: ArtworkFlight? = null,
+  artworkUrl: String? = null,
+  artworkCrop: Boolean = false,
 ) {
   val context = LocalContext.current
   val haptic = LocalHapticFeedback.current
@@ -733,8 +736,11 @@ fun Queue(
           modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
           AsyncImage(
-            model = mediaMetadata?.thumbnailUrl,
+            // The same bitmap the player and the cover in flight draw, at the same scale: the
+            // change-over at the end of the flight has to be pixel for pixel the same picture.
+            model = artworkUrl ?: mediaMetadata?.thumbnailUrl,
             contentDescription = null,
+            contentScale = if (artworkCrop) ContentScale.Crop else ContentScale.Fit,
             modifier =
               Modifier.size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
