@@ -70,6 +70,8 @@ import app.music.backend.sonari.constants.SongSortType
 import app.music.backend.sonari.constants.SongSortTypeKey
 import app.music.backend.sonari.constants.YtmSyncKey
 import app.music.backend.sonari.extensions.toMediaItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.ui.component.ChipsRow
 import app.music.backend.sonari.ui.component.LocalMenuState
@@ -160,17 +162,20 @@ fun LibrarySongsScreen(
     // A tap is answered exactly once: coming back to this list never replays the last spin.
     if (!state.claim(state.tick)) return@LaunchedEffect
     if (currentSongs.isEmpty()) return@LaunchedEffect
-    val order = currentSongs.shuffled()
+    // Made before the roll starts: building a few hundred media items on the main thread lands in
+    // the frame the spin stops, which is the jerk right before the confetti.
+    val order = withContext(Dispatchers.Default) { currentSongs.shuffled() }
+    val items = withContext(Dispatchers.Default) { order.map { it.toMediaItem() } }
     // Playback starts the moment the list lands on a song, so that song's row is lit as the playing one.
     state.spin(lazyListState, 0, currentSongs.size) { winnerRow ->
       if (winnerRow in currentSongs.indices) {
         state.pick(currentSongs[winnerRow].id)
         val at = order.indexOfFirst { it.id == currentSongs[winnerRow].id }.coerceAtLeast(0)
-        val queue = order.drop(at) + order.take(at)
+        val queue = items.drop(at) + items.take(at)
         playerConnection.playQueue(
           ListQueue(
             title = context.getString(R.string.queue_all_songs),
-            items = queue.map { it.toMediaItem() },
+            items = queue,
           ),
         )
       }

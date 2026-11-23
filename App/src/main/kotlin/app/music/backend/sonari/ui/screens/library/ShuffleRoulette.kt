@@ -34,12 +34,16 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.MediaItem
 import app.music.backend.sonari.db.entities.Song
+import app.music.backend.sonari.extensions.toMediaItem
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import nl.dionsegijn.konfetti.compose.KonfettiView
 import nl.dionsegijn.konfetti.core.Party
 import nl.dionsegijn.konfetti.core.Position
@@ -415,7 +419,17 @@ fun BoxScope.ShuffleNeedleOverlay(
 /** A burst of confetti out of the middle of the list once it has stopped on a song. */
 @Composable
 fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
-  if (!state.landed) return
+  // The burst waits a beat after the landing instead of sharing a frame with the queue being
+  // handed to the player.
+  var burst by remember { mutableStateOf(false) }
+  LaunchedEffect(state.landed) {
+    burst = false
+    if (state.landed) {
+      delay(180)
+      burst = state.landed
+    }
+  }
+  if (!burst) return
   val parties =
     listOf(
       Party(
@@ -449,7 +463,7 @@ fun rememberPlaylistShuffle(
   songs: List<Song>,
   listState: LazyListState,
   headerItems: Int = PLAYLIST_HEADER_ITEMS,
-  onQueue: (List<Song>) -> Unit,
+  onQueue: (List<MediaItem>) -> Unit,
 ): Pair<ShuffleRouletteState, () -> Unit> {
   val roulette = remember { ShuffleRouletteState() }
   val scope = rememberCoroutineScope()
@@ -460,13 +474,17 @@ fun rememberPlaylistShuffle(
     val songsNow = currentSongs
     if (songsNow.isNotEmpty()) {
       scope.launch {
-        val order = songsNow.shuffled()
+        // The queue is made before the roll starts. Building a few hundred media items on the main
+        // thread lands in the very frame the spin stops, and that is the jerk right before the
+        // confetti; done here, it is spread over a screen that is already moving.
+        val order = withContext(Dispatchers.Default) { songsNow.shuffled() }
+        val items = withContext(Dispatchers.Default) { order.map { it.toMediaItem() } }
         roulette.spin(listState, currentHeaderItems, songsNow.size) { winnerRow ->
           if (winnerRow in songsNow.indices) {
             roulette.pick(songsNow[winnerRow].id)
             // What the list came to rest on plays first, then everything else in shuffled order.
             val at = order.indexOfFirst { it.id == songsNow[winnerRow].id }.coerceAtLeast(0)
-            currentOnQueue(order.drop(at) + order.take(at))
+            currentOnQueue(items.drop(at) + items.take(at))
           }
         }
       }
