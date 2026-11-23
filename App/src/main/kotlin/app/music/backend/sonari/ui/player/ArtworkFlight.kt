@@ -1,10 +1,12 @@
 package app.music.backend.sonari.ui.player
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -149,6 +151,10 @@ fun ArtworkFlightOverlay(
           .size(width = with(density) { width.toDp() }, height = with(density) { height.toDp() })
           .graphicsLayer { this.alpha = alpha }
           .clip(RoundedCornerShape(cornerRadius))
+          // The same backing the player draws behind its artwork. A thumbnail that is not square
+          // leaves bars either side of it in that colour, and a travelling copy without them would
+          // make those bars disappear while the picture is in the air.
+          .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
       AsyncImage(
         model = url,

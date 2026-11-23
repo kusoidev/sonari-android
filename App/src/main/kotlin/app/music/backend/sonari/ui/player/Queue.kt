@@ -744,6 +744,9 @@ fun Queue(
             modifier =
               Modifier.size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
+                // The same backing the player puts behind its artwork, so a thumbnail that is not
+                // square keeps its bars through the change-over instead of losing them.
+                .background(MaterialTheme.colorScheme.surfaceVariant)
                 .onGloballyPositioned { coordinates ->
                   // Where this slot is right now, in root pixels. It travels up with the sheet, and
                   // the cover being carried from the player is aimed at exactly this, so the two are
@@ -756,7 +759,7 @@ fun Queue(
                 }
                 .graphicsLayer {
                   val p = state.progress.coerceIn(0f, 1f)
-                  if (artworkFlight?.player != null) {
+                  if (artworkUrl != null && artworkFlight?.player != null) {
                     // Solid from the moment the travelling cover has landed on this slot, and hidden
                     // before that - never half transparent underneath a half transparent travelling
                     // cover, which is what let the screen show through and blink at the change-over.

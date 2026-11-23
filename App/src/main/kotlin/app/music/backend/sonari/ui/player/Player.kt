@@ -945,9 +945,10 @@ fun BottomSheetPlayer(
   val artworkCornerRadius by rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 3f)
   // The one image the artwork, the cover in flight and the queue's own slot all draw. The player
   // asks for the large variant, so the other two must ask for the same one: two URLs would be two
-  // bitmaps, and a swap between them is exactly what shows up as a flicker.
-  val artworkUrl = remember(mediaMetadata?.thumbnailUrl) {
-    mediaMetadata?.thumbnailUrl?.resize(1200, 1200)
+  // bitmaps, and a swap between them is exactly what shows up as a flicker. Nothing is carried when
+  // the artwork is hidden - there is no cover on the player to carry.
+  val artworkUrl = remember(mediaMetadata?.thumbnailUrl, hidePlayerThumbnail) {
+    if (hidePlayerThumbnail) null else mediaMetadata?.thumbnailUrl?.resize(1200, 1200)
   }
 
   LaunchedEffect(expandQueueRequested) {
