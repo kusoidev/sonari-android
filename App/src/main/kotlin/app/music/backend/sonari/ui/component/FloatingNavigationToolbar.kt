@@ -125,8 +125,9 @@ fun FloatingNavigationToolbar(
         androidx.compose.ui.Modifier.clip(
             androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
           )
-          .liquidGlass(
+          .sonariLiquid(
             config = glassConfig,
+            component = GlassComponent.NAV_BAR,
             shape = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
           )
       } else {
