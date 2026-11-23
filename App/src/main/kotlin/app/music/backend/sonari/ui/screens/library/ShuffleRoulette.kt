@@ -3,28 +3,22 @@ package app.music.backend.sonari.ui.screens.library
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,23 +30,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import app.music.backend.sonari.db.entities.Song
 import java.util.concurrent.TimeUnit
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.exp
-import kotlin.math.floor
-import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -230,8 +220,10 @@ class ShuffleRouletteState {
     while (true) {
       val now = withFrameNanos { it }
       val t = ((now - startFrame) / 1_000_000f / durationMs).coerceIn(0f, 1f)
+      // Quintic ease-out: the list keeps most of its speed for the first half and then lets go in a
+      // long, quiet tail, which is how a wheel actually comes to rest rather than a cubic cut.
       val inverse = 1f - t
-      val eased = 1f - inverse * inverse * inverse
+      val eased = 1f - inverse * inverse * inverse * inverse * inverse
       val rowPx = songRowPxOf(listState, headerItems)
       if (rowPx <= 0f) break
       val targetInfo =
@@ -247,7 +239,8 @@ class ShuffleRouletteState {
             listState.layoutInfo.viewportSize.height / 2f - listState.layoutInfo.beforeContentPadding
           val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
           val previousEased =
-            1f - (1f - previousT) * (1f - previousT) * (1f - previousT)
+            1f - (1f - previousT) * (1f - previousT) * (1f - previousT) * (1f - previousT) *
+              (1f - previousT)
           val fraction =
             if (eased >= 1f) 1f else (eased - previousEased) / (1f - previousEased)
           remainingPx * fraction.coerceIn(0f, 0.35f)
@@ -275,8 +268,42 @@ class ShuffleRouletteState {
       previousFrame = now
       if (t >= 1f) break
     }
-    settleOnPayline(listState, aimRow)
+    overshootThenSettle(listState, aimRow)
     speed = 0f
+  }
+
+  /**
+   * A wheel does not stop dead on the line: it rolls a hair past it and eases back. This carries the
+   * winning row a few pixels beyond the payline and lets [settleOnPayline] bring it back, so the stop
+   * reads as the list settling instead of as a cut. The extra pixels are taken back at once when the
+   * list is against one of its ends and refuses them, because then there is nothing to roll into.
+   */
+  private suspend fun overshootThenSettle(listState: LazyListState, targetRow: Int) {
+    if (targetRow >= 0) {
+      val info = listState.layoutInfo
+      val targetInfo = info.visibleItemsInfo.firstOrNull { it.index == targetRow }
+      if (targetInfo != null) {
+        val paylinePx = info.viewportSize.height / 2f - info.beforeContentPadding
+        val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
+        // Only roll past the line when the row is already there; a long distance left over by a
+        // hitchy frame is not something to overshoot, it is something to settle.
+        if (abs(remainingPx) > targetInfo.size) {
+          settleOnPayline(listState, targetRow)
+          return
+        }
+        val overshoot =
+          (targetInfo.size * 0.07f).coerceIn(3f, 18f) * if (remainingPx >= 0f) 1f else -1f
+        val wanted = remainingPx + overshoot
+        if (abs(wanted) >= 0.5f) {
+          val consumed = listState.scrollBy(wanted)
+          if (abs(consumed) < abs(wanted) - 0.5f) {
+            // Clamped at an end: undo the part of the overshoot that did land, and settle exactly.
+            listState.scrollBy(-overshoot)
+          }
+        }
+      }
+    }
+    settleOnPayline(listState, targetRow)
   }
 
   /**
@@ -356,9 +383,11 @@ fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier
 }
 
 /**
- * The "> song <" brackets around the middle of the list. Every row that turns past knocks one of
- * them, and the knock lands from above: the bracket is driven down first and springs back up over
- * its rest, then settles. The two trade the blows half a beat apart, harder the faster the list runs.
+ * The payline the spin comes to rest on: a hairline across the middle of the list with a soft glow
+ * behind it. The line brightens while the list is running - faster rows, brighter line - and flashes
+ * once when a song settles on it, so the landing is felt on the screen as well as in the hand.
+ *
+ * No arrows: the list itself says where it is going, and the winning row is the row the line cuts.
  */
 @Composable
 fun BoxScope.ShuffleNeedleOverlay(
@@ -366,70 +395,78 @@ fun BoxScope.ShuffleNeedleOverlay(
   modifier: Modifier = Modifier,
 ) {
   if (!state.visible) return
-  val jiggle by
-    rememberInfiniteTransition(label = "shuffleNeedle").animateFloat(
-      initialValue = 0f,
-      targetValue = 1f,
-      animationSpec = infiniteRepeatable(tween(durationMillis = 260, easing = LinearEasing)),
-      label = "shuffleNeedleJiggle",
-    )
   val shown by
     animateFloatAsState(
       targetValue = if (state.visible) 1f else 0f,
       animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-      label = "shuffleNeedleAlpha",
+      label = "shufflePaylineAlpha",
     )
-  Box(
-    modifier = modifier.fillMaxSize().graphicsLayer { alpha = shown * state.frost },
-    contentAlignment = Alignment.Center,
-  ) {
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
-    ) {
-      BracketMark(speed = state.speed, phase = jiggle, pointsRight = true)
-      BracketMark(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
-    }
+  val haptics = LocalHapticFeedback.current
+  // One pulse per landing, and one tap in the hand to go with it.
+  val landPulse = remember { Animatable(0f) }
+  LaunchedEffect(state.landed) {
+    if (!state.landed) return@LaunchedEffect
+    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+    landPulse.snapTo(1f)
+    landPulse.animateTo(0f, tween(durationMillis = 520, easing = LinearEasing))
   }
-}
+  val lineColor = MaterialTheme.colorScheme.primary
 
-@Composable
-private fun BracketMark(speed: Float, phase: Float, pointsRight: Boolean) {
-  // A song is knocked down into the brackets, so it hits from above and the bracket gives way
-  // downwards: a quick dip, then a spring back up past its rest and a settle. Catching a rock in an
-  // open hand does the same thing - the hand drops first, it never pops up to meet it.
-  // The sine starts at zero rather than at its peak, so the very first movement is the dip, and the
-  // decaying envelope keeps the first dip the deepest.
-  val beat = phase - floor(phase)
-  val swing = exp(-4.2f * beat) * sin(6.2f * PI.toFloat() * beat)
-  val hit = (swing * speed).coerceIn(-1f, 1f)
-  val tint = MaterialTheme.colorScheme.primary
-  val mirror = if (pointsRight) 1f else -1f
-
-  Canvas(
-    modifier =
-      Modifier.size(26.dp).graphicsLayer {
-        translationY = hit * 7.dp.toPx()
-        rotationZ = hit * 3f * (if (pointsRight) 1f else -1f)
-        scaleX = mirror * (1f + 0.05f * hit)
-        // squashed as it is driven down, stretched slightly on the way back up
-        scaleY = 1f - 0.10f * hit
-      },
-  ) {
-    // A rounded angle bracket, drawn rather than a glyph so the two sides stay optically equal.
-    val stroke = size.minDimension * 0.17f
-    val path =
-      Path().apply {
-        moveTo(size.width * 0.24f, size.height * 0.10f)
-        lineTo(size.width * 0.80f, size.height * 0.50f)
-        lineTo(size.width * 0.24f, size.height * 0.90f)
-      }
-    drawPath(
-      path = path,
-      color = tint,
-      style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+  Canvas(modifier = modifier.fillMaxSize().graphicsLayer { alpha = shown * state.frost }) {
+    val y = size.height / 2f
+    val speed = state.speed.coerceIn(0f, 1f)
+    val pulse = landPulse.value.coerceIn(0f, 1f)
+    // The glow band widens as the list runs, and flares when it stops.
+    val bandHalf = (34f + 26f * speed + 30f * pulse).dp.toPx()
+    drawRect(
+      brush =
+        Brush.verticalGradient(
+          colors =
+            listOf(
+              Color.Transparent,
+              lineColor.copy(alpha = 0.06f + 0.07f * speed + 0.10f * pulse),
+              Color.Transparent,
+            ),
+          startY = y - bandHalf,
+          endY = y + bandHalf,
+        ),
+      topLeft = Offset(0f, y - bandHalf),
+      size = Size(size.width, bandHalf * 2f),
     )
+    // The line itself: brightest in the middle, gone before it reaches the edges, so it reads as a
+    // place to land rather than as a divider across the screen.
+    val core = 0.35f + 0.30f * speed + 0.45f * pulse
+    drawRect(
+      brush =
+        Brush.horizontalGradient(
+          0f to Color.Transparent,
+          0.16f to lineColor.copy(alpha = core * 0.45f),
+          0.5f to lineColor.copy(alpha = core),
+          0.84f to lineColor.copy(alpha = core * 0.45f),
+          1f to Color.Transparent,
+        ),
+      topLeft = Offset(0f, y - 0.75.dp.toPx()),
+      size = Size(size.width, 1.5.dp.toPx()),
+    )
+    // Two short ticks at the ends of the line, so the eye can find the payline at a glance without
+    // an arrow telling it which way the list is going.
+    val tickWidth = 10.dp.toPx()
+    val tickInset = size.width * 0.16f
+    val tickAlpha = 0.30f + 0.25f * speed + 0.35f * pulse
+    listOf(tickInset, size.width - tickInset).forEach { x ->
+      drawRect(
+        brush =
+          Brush.horizontalGradient(
+            colors =
+              listOf(
+                lineColor.copy(alpha = tickAlpha * 0.2f),
+                lineColor.copy(alpha = tickAlpha),
+              ),
+          ),
+        topLeft = Offset(x - tickWidth / 2f, y - 0.75.dp.toPx()),
+        size = Size(tickWidth, 1.5.dp.toPx()),
+      )
+    }
   }
 }
 
@@ -516,7 +553,7 @@ fun BoxScope.ShuffleInputBlocker(state: ShuffleRouletteState) {
 }
 
 /**
- * Everything the spin draws over a playlist: the frosted edges, the brackets at the needle, the
+ * Everything the spin draws over a playlist: the frosted edges, the payline in the middle, the
  * confetti when it lands, and a blocker so the screen cannot be touched until it stops. The playlist
  * itself is what turns, so there is nothing to draw over it.
  *
