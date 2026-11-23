@@ -1,11 +1,7 @@
 package app.music.backend.sonari.ui.screens.library
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
@@ -30,8 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -383,11 +377,9 @@ fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier
 }
 
 /**
- * The payline the spin comes to rest on: a hairline across the middle of the list with a soft glow
- * behind it. The line brightens while the list is running - faster rows, brighter line - and flashes
- * once when a song settles on it, so the landing is felt on the screen as well as in the hand.
- *
- * No arrows: the list itself says where it is going, and the winning row is the row the line cuts.
+ * The hand's share of the landing: one haptic tap the moment a song comes to rest, and nothing
+ * drawn on the screen. The list is the wheel, the confetti is the prize, and a marker over the
+ * middle of it just gets in the way.
  */
 @Composable
 fun BoxScope.ShuffleNeedleOverlay(
@@ -395,78 +387,9 @@ fun BoxScope.ShuffleNeedleOverlay(
   modifier: Modifier = Modifier,
 ) {
   if (!state.visible) return
-  val shown by
-    animateFloatAsState(
-      targetValue = if (state.visible) 1f else 0f,
-      animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-      label = "shufflePaylineAlpha",
-    )
   val haptics = LocalHapticFeedback.current
-  // One pulse per landing, and one tap in the hand to go with it.
-  val landPulse = remember { Animatable(0f) }
   LaunchedEffect(state.landed) {
-    if (!state.landed) return@LaunchedEffect
-    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-    landPulse.snapTo(1f)
-    landPulse.animateTo(0f, tween(durationMillis = 520, easing = LinearEasing))
-  }
-  val lineColor = MaterialTheme.colorScheme.primary
-
-  Canvas(modifier = modifier.fillMaxSize().graphicsLayer { alpha = shown * state.frost }) {
-    val y = size.height / 2f
-    val speed = state.speed.coerceIn(0f, 1f)
-    val pulse = landPulse.value.coerceIn(0f, 1f)
-    // The glow band widens as the list runs, and flares when it stops.
-    val bandHalf = (34f + 26f * speed + 30f * pulse).dp.toPx()
-    drawRect(
-      brush =
-        Brush.verticalGradient(
-          colors =
-            listOf(
-              Color.Transparent,
-              lineColor.copy(alpha = 0.06f + 0.07f * speed + 0.10f * pulse),
-              Color.Transparent,
-            ),
-          startY = y - bandHalf,
-          endY = y + bandHalf,
-        ),
-      topLeft = Offset(0f, y - bandHalf),
-      size = Size(size.width, bandHalf * 2f),
-    )
-    // The line itself: brightest in the middle, gone before it reaches the edges, so it reads as a
-    // place to land rather than as a divider across the screen.
-    val core = 0.35f + 0.30f * speed + 0.45f * pulse
-    drawRect(
-      brush =
-        Brush.horizontalGradient(
-          0f to Color.Transparent,
-          0.16f to lineColor.copy(alpha = core * 0.45f),
-          0.5f to lineColor.copy(alpha = core),
-          0.84f to lineColor.copy(alpha = core * 0.45f),
-          1f to Color.Transparent,
-        ),
-      topLeft = Offset(0f, y - 0.75.dp.toPx()),
-      size = Size(size.width, 1.5.dp.toPx()),
-    )
-    // Two short ticks at the ends of the line, so the eye can find the payline at a glance without
-    // an arrow telling it which way the list is going.
-    val tickWidth = 10.dp.toPx()
-    val tickInset = size.width * 0.16f
-    val tickAlpha = 0.30f + 0.25f * speed + 0.35f * pulse
-    listOf(tickInset, size.width - tickInset).forEach { x ->
-      drawRect(
-        brush =
-          Brush.horizontalGradient(
-            colors =
-              listOf(
-                lineColor.copy(alpha = tickAlpha * 0.2f),
-                lineColor.copy(alpha = tickAlpha),
-              ),
-          ),
-        topLeft = Offset(x - tickWidth / 2f, y - 0.75.dp.toPx()),
-        size = Size(tickWidth, 1.5.dp.toPx()),
-      )
-    }
+    if (state.landed) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
   }
 }
 

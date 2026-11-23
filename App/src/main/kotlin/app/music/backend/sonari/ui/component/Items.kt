@@ -138,7 +138,7 @@ inline fun ListItem(
   isSelected: Boolean? = false,
   isActive: Boolean = false,
   isAvailable: Boolean = true,
-  shape: Shape = RectangleShape,
+  shape: Shape = RoundedCornerShape(16.dp),
   drawHighlight: Boolean = true,
   horizontalPadding: Dp = 16.dp,
   color: Color = Color.Transparent,
