@@ -1014,4 +1014,12 @@
     <!-- Theme & UI -->
     <string name="theme_mode_monochrome">Monochrome</string>
     <string name="theme_mode_monochrome_desc">Pure neutral grayscale with high contrast</string>
+
+    <!-- Duplicate finder -->
+    <string name="duplicates_none">No duplicate songs found</string>
+    <string name="duplicates_copies">%1$d copies</string>
+    <string name="duplicates_hint">Copies of the same song, matched by title, artist and length. Deleting a copy removes that file from the device.</string>
+    <string name="dup_delete_file">Delete this file</string>
+    <string name="dup_deleted">File deleted</string>
+    <string name="dup_delete_failed">Could not delete the file</string>
 </resources>

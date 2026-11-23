@@ -33,6 +33,7 @@ import app.music.backend.sonari.ui.screens.artist.ArtistSongsScreen
 import app.music.backend.sonari.ui.screens.equalizer.EqScreen
 import app.music.backend.sonari.ui.screens.equalizer.axion.AxionEqScreen
 import app.music.backend.sonari.ui.screens.generate.GenerateScreen
+import app.music.backend.sonari.ui.screens.library.DuplicatesScreen
 import app.music.backend.sonari.ui.screens.library.LibraryScreen
 import app.music.backend.sonari.ui.screens.library.LocalSongScreen
 import app.music.backend.sonari.ui.screens.playlist.AutoPlaylistScreen
@@ -107,6 +108,8 @@ fun NavGraphBuilder.navigationBuilder(
   }
 
   composable("local_songs") { LocalSongScreen(navController) }
+
+  composable("local_duplicates") { DuplicatesScreen(navController) }
 
   composable("stats") { StatsScreen(navController) }
 

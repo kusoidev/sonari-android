@@ -463,6 +463,12 @@ fun LocalSongScreen(
             }
           },
           actions = {
+            IconButton(onClick = { navController.navigate("local_duplicates") }) {
+              Icon(
+                painter = painterResource(R.drawable.content_copy),
+                contentDescription = stringResource(R.string.duplicates_title),
+              )
+            }
             IconButton(onClick = { isSearchActive = true }) {
               Icon(
                 painter = painterResource(R.drawable.search),
