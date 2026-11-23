@@ -3,6 +3,7 @@ package app.music.backend.sonari.ui.component
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandIn
 import androidx.compose.animation.fadeIn
@@ -145,9 +146,16 @@ inline fun ListItem(
   verticalPadding: Dp = 2.dp,
 ) {
   // A row that is playing, or picked by a shuffle, is drawn as its own rounded pill whatever the
-  // grouping of the list says, so the highlight never ends on a hard edge.
+  // grouping of the list says, so the highlight never ends on a hard edge. The colour itself melts
+  // in: it grows out of the background over a third of a second instead of landing on it as a block.
   val highlighted = isActive || (isSelected == true && drawHighlight)
   val rowShape = if (highlighted) RoundedCornerShape(16.dp) else shape
+  val highlightAlpha by
+    animateFloatAsState(
+      targetValue = if (highlighted) 1f else 0f,
+      animationSpec = tween(durationMillis = 350),
+      label = "rowHighlight",
+    )
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier =
@@ -157,9 +165,10 @@ inline fun ListItem(
         .background(
           color =
             when {
-              isActive -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+              isActive ->
+                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f * highlightAlpha)
               isSelected == true && drawHighlight ->
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f * highlightAlpha)
               else -> color
             }
         )
