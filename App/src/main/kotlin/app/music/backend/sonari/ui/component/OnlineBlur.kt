@@ -19,23 +19,28 @@ fun OnlineBlur(
   thumbnailUrl: String?,
   modifier: Modifier = Modifier,
 ) {
+  val page = MaterialTheme.colorScheme.background
   Box(modifier = modifier) {
     if (thumbnailUrl != null) {
       AsyncImage(
         model = thumbnailUrl,
         contentDescription = null,
         contentScale = ContentScale.Crop,
-        modifier = Modifier.fillMaxSize().blur(50.dp).fadingEdge(bottom = 200.dp)
+        modifier = Modifier.fillMaxSize().blur(50.dp)
       )
     }
 
+    // The blur melts into the page as it goes down instead of stopping on a line: whatever height
+    // the caller gives it, by the bottom it is the page again.
     Box(
       modifier =
         Modifier.fillMaxSize()
           .background(
             Brush.verticalGradient(
-              colors =
-                listOf(Color.Transparent, MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+              0f to Color.Transparent,
+              0.35f to page.copy(alpha = 0.12f),
+              0.72f to page.copy(alpha = 0.72f),
+              1f to page,
             )
           )
     )

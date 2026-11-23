@@ -73,6 +73,18 @@ class ShuffleRouletteState {
   var landed by mutableStateOf(false)
     private set
 
+  /**
+   * The song the last spin came to rest on, kept so its row stays lit after the spin is over: the
+   * pick is shown by the list itself, not by whatever the player happens to be doing.
+   */
+  var pickedSongId by mutableStateOf<String?>(null)
+    private set
+
+  /** Names the song a spin landed on. Cleared when the next spin starts. */
+  fun pick(songId: String?) {
+    pickedSongId = songId
+  }
+
   /** 0..1 how strongly the top and bottom of the screen are frosted. */
   var frost by mutableFloatStateOf(0f)
     private set
@@ -83,7 +95,10 @@ class ShuffleRouletteState {
 
   /** Called by the shuffle FAB. Ignored while a spin is already running. */
   fun begin() {
-    if (!running) tick++
+    if (!running) {
+      pickedSongId = null
+      tick++
+    }
   }
 
   /**
@@ -446,6 +461,7 @@ fun rememberPlaylistShuffle(
         val order = songsNow.shuffled()
         roulette.spin(listState, currentHeaderItems, songsNow.size) { winnerRow ->
           if (winnerRow in songsNow.indices) {
+            roulette.pick(songsNow[winnerRow].id)
             // What the list came to rest on plays first, then everything else in shuffled order.
             val at = order.indexOfFirst { it.id == songsNow[winnerRow].id }.coerceAtLeast(0)
             currentOnQueue(order.drop(at) + order.take(at))

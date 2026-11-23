@@ -73,7 +73,7 @@ import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.ui.component.ChipsRow
 import app.music.backend.sonari.ui.component.LocalMenuState
-import app.music.backend.sonari.ui.component.SoftTopEdge
+import app.music.backend.sonari.ui.component.softTopEdgeFade
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.SelectionSongMenu
@@ -165,6 +165,7 @@ fun LibrarySongsScreen(
     // Playback starts the moment the list lands on a song, so that song's row is lit as the playing one.
     state.spin(lazyListState, 0, currentSongs.size) { winnerRow ->
       if (winnerRow in currentSongs.indices) {
+        state.pick(currentSongs[winnerRow].id)
         val at = order.indexOfFirst { it.id == currentSongs[winnerRow].id }.coerceAtLeast(0)
         val queue = order.drop(at) + order.take(at)
         playerConnection.playQueue(
@@ -263,7 +264,7 @@ fun LibrarySongsScreen(
           contentPadding = PaddingValues(bottom = listInsets.calculateBottomPadding()),
           // The playlist itself is what turns, so it may not be scrolled by hand while it does.
           userScrollEnabled = roulette?.running != true,
-          modifier = Modifier.fillMaxSize(),
+          modifier = Modifier.fillMaxSize().softTopEdgeFade(lazyListState),
         ) {
           itemsIndexed(
             items = filteredSongs,
@@ -277,10 +278,15 @@ fun LibrarySongsScreen(
                 selection.remove(song.id)
               }
             }
+            // The song a spin landed on stays lit until something else is played or another spin
+            // runs, so the pick is visible even while playback is still catching up.
+            val pickedActive =
+              roulette?.pickedSongId == song.id &&
+                (mediaMetadata == null || mediaMetadata?.id == roulette?.pickedSongId)
             SongListItem(
               song = song,
               showInLibraryIcon = true,
-              isActive = song.id == mediaMetadata?.id,
+              isActive = song.id == mediaMetadata?.id || pickedActive,
               isPlaying = isPlaying,
               showLikedIcon = true,
               showDownloadIcon = filter != SongFilter.DOWNLOADED,
@@ -349,14 +355,6 @@ fun LibrarySongsScreen(
             )
           }
         }
-
-        // The list is clipped where the header ends, so its top rows fade out there
-        // instead of ending on a hard line.
-        SoftTopEdge(
-          listState = lazyListState,
-          height = 56.dp,
-          modifier = Modifier.align(Alignment.TopCenter),
-        )
 
         roulette?.let { state ->
           ShuffleNeedleOverlay(state, Modifier.matchParentSize())

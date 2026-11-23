@@ -106,7 +106,7 @@ import app.music.backend.sonari.ui.component.DraggableScrollbar
 import app.music.backend.sonari.ui.component.EmptyPlaceholder
 import app.music.backend.sonari.ui.component.IconButton
 import app.music.backend.sonari.ui.component.LocalMenuState
-import app.music.backend.sonari.ui.component.SoftTopEdge
+import app.music.backend.sonari.ui.component.softTopEdgeFade
 import app.music.backend.sonari.ui.component.SongListItem
 import app.music.backend.sonari.ui.component.SortHeader
 import app.music.backend.sonari.ui.menu.AutoPlaylistMenu
@@ -331,25 +331,18 @@ fun AutoPlaylistScreen(
   ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val headerHeight = with(density) { headerHeightPx.toDp() }
-    if (
-      songs?.isNotEmpty() == true &&
-        headerHeightPx > 0 &&
-        state.firstVisibleItemIndex == 0
-    ) {
-      // Keep the header backdrop outside the LazyColumn so its top edge is
-      // anchored to the window instead of relying on content-padding offsets.
-      // It still moves with the header as the list scrolls.
+    if (songs?.isNotEmpty() == true) {
+      // The blurred cover is the whole page's backdrop, not just the header's: it runs behind the
+      // songs and melts into the background at the bottom, so it never ends on a hard line.
       app.music.backend.sonari.ui.component.OnlineBlur(
         thumbnailUrl = songs!!.first().thumbnailUrl,
-        modifier =
-          Modifier.fillMaxWidth()
-            .height(headerHeight)
-            .offset { IntOffset(0, -state.firstVisibleItemScrollOffset) }
+        modifier = Modifier.fillMaxSize()
       )
     }
 
     LazyColumn(
       state = state,
+      modifier = Modifier.fillMaxSize().softTopEdgeFade(state),
       // The playlist itself turns during a shuffle spin, so it may not be dragged while it does.
       userScrollEnabled = !shuffleRoulette.running,
       contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -419,7 +412,11 @@ fun AutoPlaylistScreen(
 
             SongListItem(
               song = song,
-              isActive = song.song.id == mediaMetadata?.id,
+              isActive =
+                song.song.id == mediaMetadata?.id ||
+                  (shuffleRoulette.pickedSongId == song.song.id &&
+                    (mediaMetadata == null ||
+                      mediaMetadata?.id == shuffleRoulette.pickedSongId)),
               isPlaying = isPlaying,
               showInLibraryIcon = true,
               shape = listItemShape(index, filteredSongs.size),
@@ -499,13 +496,6 @@ fun AutoPlaylistScreen(
             .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues()),
       )
     }
-
-    // The top of the list melts into the background instead of being sliced by the edge of
-    // the scroll area, so the header slides away smoothly under the bar.
-    SoftTopEdge(
-      listState = state,
-      modifier = Modifier.align(Alignment.TopCenter),
-    )
 
     TopAppBar(
       title = {
