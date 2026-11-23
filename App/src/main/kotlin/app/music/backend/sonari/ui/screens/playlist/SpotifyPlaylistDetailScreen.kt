@@ -142,17 +142,12 @@ fun SpotifyPlaylistDetailScreen(
     } else {
       val density = LocalDensity.current
       val headerHeight = with(density) { headerHeightPx.toDp() }
-      if (headerHeightPx > 0 && lazyListState.firstVisibleItemIndex == 0) {
-        // Anchored at the window top so the status bar is covered immediately;
-        // scrolls with the header instead of relying on content-padding offsets.
-        OnlineBlur(
-          thumbnailUrl = effectiveCover,
-          modifier =
-            Modifier.fillMaxWidth()
-              .height(headerHeight)
-              .offset { IntOffset(0, -lazyListState.firstVisibleItemScrollOffset) }
-        )
-      }
+      // The blurred cover runs the whole page behind the songs and melts into the background at the
+      // bottom, so it never ends on a hard line.
+      OnlineBlur(
+        thumbnailUrl = effectiveCover,
+        modifier = Modifier.fillMaxWidth().height(headerHeight + 260.dp)
+      )
 
       LazyColumn(
         state = lazyListState,

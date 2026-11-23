@@ -419,12 +419,9 @@ fun LocalPlaylistScreen(
 
   // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
   val (shuffleRoulette, shufflePlaylist) =
-    rememberPlaylistShuffle(songs.map { it.song }, lazyListState) { queue ->
+    rememberPlaylistShuffle(songs.map { it.song }, lazyListState) { items ->
       playerConnection.playQueue(
-        ListQueue(
-          title = playlist?.playlist?.name.orEmpty(),
-          items = queue.map { it.toMediaItem() },
-        )
+        ListQueue(title = playlist?.playlist?.name.orEmpty(), items = items)
       )
     }
   var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }

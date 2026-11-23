@@ -33,8 +33,8 @@ android {
     applicationId = "com.kusoi.sonari"
     minSdk = 26
     targetSdk = 36
-    versionCode = 170
-    versionName = "1.5.0"
+    versionCode = 171
+    versionName = "1.6.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables.useSupportLibrary = true
@@ -256,6 +256,7 @@ dependencies {
   "gmsImplementation"(libs.play.services.location)
 
   implementation(libs.haze)
+  implementation(libs.liquid)
   implementation(libs.guava)
   implementation(libs.coroutines.guava)
   implementation(libs.concurrent.futures)

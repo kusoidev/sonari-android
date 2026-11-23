@@ -6,7 +6,10 @@
         <item name="android:windowMinWidthMinor">100%</item>
         <item name="android:windowMinWidthMajor">100%</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">#ffffff</item>
+        <!-- Black, like values-v31 and like the launch intro's first frame: on Android 11 and
+             older there is no system splash in front of the intro, so the window background is
+             what shows until Compose draws, and white flashed before the animation. -->
+        <item name="android:windowBackground">@android:color/black</item>
         <item name="android:enforceNavigationBarContrast" tools:ignore="NewApi">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

@@ -208,6 +208,7 @@ import app.music.backend.sonari.constants.SquigglySliderKey
 import app.music.backend.sonari.constants.WavyPlayPauseKey
 import app.music.backend.sonari.constants.SwipeLyricsKey
 import app.music.backend.sonari.constants.ThumbnailCornerRadius
+import app.music.backend.sonari.constants.ThumbnailCornerRadiusKey
 import app.music.backend.sonari.constants.UseNewPlayerDesignKey
 import app.music.backend.sonari.db.entities.LyricsEntity
 import app.music.backend.sonari.sonari.getConnectedBluetoothDeviceName
@@ -241,6 +242,7 @@ import app.music.backend.sonari.ui.theme.PlayerColorExtractor
 import app.music.backend.sonari.ui.theme.PlayerSliderColors
 import app.music.backend.sonari.ui.utils.ShowMediaInfo
 import app.music.backend.sonari.ui.utils.ShowOffsetDialog
+import app.music.backend.sonari.ui.utils.resize
 import app.music.backend.sonari.innertube.models.PODCAST_BROWSE_PREFIX
 import app.music.backend.sonari.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
 import app.music.backend.sonari.utils.PodcastProgress
@@ -936,6 +938,18 @@ fun BottomSheetPlayer(
       collapsedBound = dismissedBound + 1.dp,
       initialAnchor = 1
     )
+
+  // One cover, two places: the artwork here and the queue header's slot both measure themselves
+  // into this, and the copy drawn on top of the sheet carries it from one to the other.
+  val artworkFlight = remember { ArtworkFlight() }
+  val artworkCornerRadius by rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 3f)
+  // The one image the artwork, the cover in flight and the queue's own slot all draw. The player
+  // asks for the large variant, so the other two must ask for the same one: two URLs would be two
+  // bitmaps, and a swap between them is exactly what shows up as a flicker. Nothing is carried when
+  // the artwork is hidden - there is no cover on the player to carry.
+  val artworkUrl = remember(mediaMetadata?.thumbnailUrl, hidePlayerThumbnail) {
+    if (hidePlayerThumbnail) null else mediaMetadata?.thumbnailUrl?.resize(1200, 1200)
+  }
 
   LaunchedEffect(expandQueueRequested) {
     if (expandQueueRequested) {
@@ -3010,14 +3024,15 @@ fun BottomSheetPlayer(
                   modifier =
                     Modifier.animateContentSize()
                       .graphicsLayer {
-                        val rawP = queueSheetState.progress.coerceIn(0f, 1f)
-                        val p = androidx.compose.animation.core.FastOutSlowInEasing.transform(rawP)
-                        val shrink = 1f - 0.80f * p
-                        scaleX = shrink
-                        scaleY = shrink
-                        translationX = -size.width * 0.42f * p
-                        translationY = -size.height * 0.42f * p
-                        alpha = 1f - p
+                        // The cover itself travels into the queue's header, drawn on top of the
+                        // sheet: this one is the copy it is drawn over, and it only steps aside
+                        // once the travelling copy is solid on top of it. It never goes half see-
+                        // through: two covers at half opacity let the screen through, and that is
+                        // the blink at each end of the move.
+                        alpha =
+                          if (artworkUrl != null &&
+                              artworkCarried(queueSheetState.progress.coerceIn(0f, 1f))) 0f
+                          else 1f
                       },
                   isPlayerExpanded = isExpandedProvider,
                   isLandscape = true,
@@ -3029,7 +3044,7 @@ fun BottomSheetPlayer(
                         rememberSharedContentState("player-artwork"),
                         animatedVisibilityScope = lyricsVisibilityScope,
                       )
-                    }
+                    }.reportArtworkSlot(artworkFlight, artworkCornerRadius.dp)
                 )
               }
             }
@@ -3096,14 +3111,15 @@ fun BottomSheetPlayer(
                   modifier =
                     Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)
                       .graphicsLayer {
-                        val rawP = queueSheetState.progress.coerceIn(0f, 1f)
-                        val p = androidx.compose.animation.core.FastOutSlowInEasing.transform(rawP)
-                        val shrink = 1f - 0.80f * p
-                        scaleX = shrink
-                        scaleY = shrink
-                        translationX = -size.width * 0.42f * p
-                        translationY = -size.height * 0.42f * p
-                        alpha = 1f - p
+                        // The cover itself travels into the queue's header, drawn on top of the
+                        // sheet: this one is the copy it is drawn over, and it only steps aside
+                        // once the travelling copy is solid on top of it. It never goes half see-
+                        // through: two covers at half opacity let the screen through, and that is
+                        // the blink at each end of the move.
+                        alpha =
+                          if (artworkUrl != null &&
+                              artworkCarried(queueSheetState.progress.coerceIn(0f, 1f))) 0f
+                          else 1f
                       },
                   isPlayerExpanded = isExpandedProvider,
                   isListenTogetherGuest = isListenTogetherGuest,
@@ -3114,7 +3130,7 @@ fun BottomSheetPlayer(
                         rememberSharedContentState("player-artwork"),
                         animatedVisibilityScope = lyricsVisibilityScope,
                       )
-                    }
+                    }.reportArtworkSlot(artworkFlight, artworkCornerRadius.dp)
                 )
               }
             }
@@ -3162,11 +3178,25 @@ fun BottomSheetPlayer(
         showInlineLyrics = showInlineLyrics,
         playerBackground = playerBackground,
         onToggleLyrics = { showInlineLyrics = !showInlineLyrics },
+        artworkFlight = artworkFlight,
+        artworkUrl = artworkUrl,
+        artworkCrop = cropAlbumArt,
       )
     }
 
 
   }
+
+  // The cover on its way into the queue header. Emitted after the sheet, so it rides over the queue
+  // as it rises instead of being clipped by it, and driven by the sheet's own progress, so it moves
+  // with the drag, stops where the drag stops, and turns back with it.
+  ArtworkFlightOverlay(
+    flight = artworkFlight,
+    progress = remember(queueSheetState) { { queueSheetState.progress } },
+    url = artworkUrl,
+    crop = cropAlbumArt,
+    modifier = Modifier.fillMaxSize(),
+  )
 }
 
 

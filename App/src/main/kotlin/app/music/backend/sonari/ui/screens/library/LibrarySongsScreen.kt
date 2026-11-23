@@ -70,6 +70,8 @@ import app.music.backend.sonari.constants.SongSortType
 import app.music.backend.sonari.constants.SongSortTypeKey
 import app.music.backend.sonari.constants.YtmSyncKey
 import app.music.backend.sonari.extensions.toMediaItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.ui.component.ChipsRow
 import app.music.backend.sonari.ui.component.LocalMenuState
@@ -160,17 +162,27 @@ fun LibrarySongsScreen(
     // A tap is answered exactly once: coming back to this list never replays the last spin.
     if (!state.claim(state.tick)) return@LaunchedEffect
     if (currentSongs.isEmpty()) return@LaunchedEffect
-    val order = currentSongs.shuffled()
-    val winnerRow = state.spin(lazyListState, 0, currentSongs.size)
-    if (winnerRow !in currentSongs.indices) return@LaunchedEffect
-    val at = order.indexOfFirst { it.id == currentSongs[winnerRow].id }.coerceAtLeast(0)
-    val queue = order.drop(at) + order.take(at)
-    playerConnection.playQueue(
-      ListQueue(
-        title = context.getString(R.string.queue_all_songs),
-        items = queue.map { it.toMediaItem() },
-      ),
-    )
+    // Made before the roll starts: building a few hundred media items on the main thread lands in
+    // the frame the spin stops, which is the jerk right before the confetti.
+    val order = withContext(Dispatchers.Default) { currentSongs.shuffled() }
+    val items = withContext(Dispatchers.Default) { order.map { it.toMediaItem() } }
+    var landedRow = -1
+    // The row is lit the moment the list stops, but the player is handed the queue only once the
+    // spin is over: the mini player sliding in changes the list's insets, and doing that while the
+    // list is still settling is what made the songs bob up and down.
+    state.spin(lazyListState, 0, currentSongs.size) { winnerRow ->
+      landedRow = winnerRow
+      if (winnerRow in currentSongs.indices) state.pick(currentSongs[winnerRow].id)
+    }
+    if (landedRow in currentSongs.indices) {
+      val at = order.indexOfFirst { it.id == currentSongs[landedRow].id }.coerceAtLeast(0)
+      playerConnection.playQueue(
+        ListQueue(
+          title = context.getString(R.string.queue_all_songs),
+          items = items.drop(at) + items.take(at),
+        ),
+      )
+    }
   }
 
   val listInsets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
@@ -273,10 +285,15 @@ fun LibrarySongsScreen(
                 selection.remove(song.id)
               }
             }
+            // The song a spin landed on stays lit until something else is played or another spin
+            // runs, so the pick is visible even while playback is still catching up.
+            val pickedActive =
+              roulette?.pickedSongId == song.id &&
+                (mediaMetadata == null || mediaMetadata?.id == roulette?.pickedSongId)
             SongListItem(
               song = song,
               showInLibraryIcon = true,
-              isActive = song.id == mediaMetadata?.id,
+              isActive = song.id == mediaMetadata?.id || pickedActive,
               isPlaying = isPlaying,
               showLikedIcon = true,
               showDownloadIcon = filter != SongFilter.DOWNLOADED,

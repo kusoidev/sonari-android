@@ -302,10 +302,8 @@ fun AutoPlaylistScreen(
 
   // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
   val (shuffleRoulette, shufflePlaylist) =
-    rememberPlaylistShuffle(songs.orEmpty(), state) { queue ->
-      playerConnection?.playQueue(
-        ListQueue(title = playlist, items = queue.map { it.toMediaItem() })
-      )
+    rememberPlaylistShuffle(songs.orEmpty(), state) { items ->
+      playerConnection?.playQueue(ListQueue(title = playlist, items = items))
     }
   var headerHeightPx by remember { mutableIntStateOf(0) }
 
@@ -330,25 +328,18 @@ fun AutoPlaylistScreen(
   ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val headerHeight = with(density) { headerHeightPx.toDp() }
-    if (
-      songs?.isNotEmpty() == true &&
-        headerHeightPx > 0 &&
-        state.firstVisibleItemIndex == 0
-    ) {
-      // Keep the header backdrop outside the LazyColumn so its top edge is
-      // anchored to the window instead of relying on content-padding offsets.
-      // It still moves with the header as the list scrolls.
+    if (songs?.isNotEmpty() == true) {
+      // The blurred cover is the whole page's backdrop, not just the header's: it runs behind the
+      // songs and melts into the background at the bottom, so it never ends on a hard line.
       app.music.backend.sonari.ui.component.OnlineBlur(
         thumbnailUrl = songs!!.first().thumbnailUrl,
-        modifier =
-          Modifier.fillMaxWidth()
-            .height(headerHeight)
-            .offset { IntOffset(0, -state.firstVisibleItemScrollOffset) }
+        modifier = Modifier.fillMaxWidth().height(headerHeight + 260.dp)
       )
     }
 
     LazyColumn(
       state = state,
+      modifier = Modifier.fillMaxSize(),
       // The playlist itself turns during a shuffle spin, so it may not be dragged while it does.
       userScrollEnabled = !shuffleRoulette.running,
       contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -418,7 +409,11 @@ fun AutoPlaylistScreen(
 
             SongListItem(
               song = song,
-              isActive = song.song.id == mediaMetadata?.id,
+              isActive =
+                song.song.id == mediaMetadata?.id ||
+                  (shuffleRoulette.pickedSongId == song.song.id &&
+                    (mediaMetadata == null ||
+                      mediaMetadata?.id == shuffleRoulette.pickedSongId)),
               isPlaying = isPlaying,
               showInLibraryIcon = true,
               shape = listItemShape(index, filteredSongs.size),

@@ -126,7 +126,7 @@ import app.music.backend.sonari.ui.component.HeartBurstIcon
 import app.music.backend.sonari.ui.component.Icon as MIcon
 import app.music.backend.sonari.ui.component.LocalGlassEffectConfig
 import app.music.backend.sonari.ui.component.isGlassSupported
-import app.music.backend.sonari.ui.component.liquidGlass
+import app.music.backend.sonari.ui.component.sonariLiquid
 import app.music.backend.sonari.ui.screens.settings.DarkMode
 import app.music.backend.sonari.ui.theme.PlayerColorExtractor
 import app.music.backend.sonari.utils.rememberEnumPreference
@@ -228,8 +228,9 @@ fun MiniPlayer(
 
     val tabBarContentModifier =
       if (useGlass) {
-        Modifier.liquidGlass(
+        Modifier.sonariLiquid(
           config = glassConfig,
+          component = GlassComponent.MINI_PLAYER,
           shape = RoundedCornerShape(percent = 50),
         )
       } else {
@@ -467,7 +468,11 @@ private fun NewMiniPlayer(progressState: ProgressState, modifier: Modifier = Mod
           .let { m ->
             val shape = RoundedCornerShape(percent = 50)
             if (useGlass) {
-                m.clip(shape).liquidGlass(config = glassConfig, shape = shape)
+                m.clip(shape).sonariLiquid(
+                  config = glassConfig,
+                  component = GlassComponent.MINI_PLAYER,
+                  shape = shape,
+                )
               } else {
                 m.clip(shape).background(bgTint)
               }

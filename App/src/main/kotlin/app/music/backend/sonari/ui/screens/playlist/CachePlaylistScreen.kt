@@ -165,12 +165,9 @@ fun CachePlaylistScreen(
 
   // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
   val (shuffleRoulette, shufflePlaylist) =
-    rememberPlaylistShuffle(sortedSongs, lazyListState) { queue ->
+    rememberPlaylistShuffle(sortedSongs, lazyListState) { items ->
       playerConnection.playQueue(
-        ListQueue(
-          title = context.getString(R.string.cached_playlist),
-          items = queue.map { it.toMediaItem() },
-        )
+        ListQueue(title = context.getString(R.string.cached_playlist), items = items)
       )
     }
 

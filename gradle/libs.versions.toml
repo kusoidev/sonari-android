@@ -1,6 +1,7 @@
 [versions]
 retrofit = "3.0.0"
 haze = "1.0.2"
+liquid = "1.1.1"
 androidGradlePlugin = "9.0.0"
 json = "20260814"
 kotlin = "2.4.21"
@@ -56,6 +57,7 @@ robolectric = "4.14.1"
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 retrofit-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "retrofit" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+liquid = { module = "io.github.fletchmckee.liquid:liquid", version.ref = "liquid" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 coroutines-guava = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-guava", version.ref = "coroutinesGuava" }
 concurrent-futures = { module = "androidx.concurrent:concurrent-futures-ktx", version.ref = "concurrentFutures" }

@@ -298,19 +298,12 @@ fun OnlinePlaylistScreen(
     val density = LocalDensity.current
     val headerHeight = with(density) { headerHeightPx.toDp() }
     val currentPlaylist = playlist
-    if (
-      currentPlaylist != null &&
-        headerHeightPx > 0 &&
-        lazyListState.firstVisibleItemIndex == 0
-    ) {
-      // Anchored at the window top so the status bar is covered immediately;
-      // scrolls with the header instead of relying on content-padding offsets.
+    if (currentPlaylist != null) {
+      // The blurred cover runs the whole page behind the songs and melts into the background at the
+      // bottom, so it never ends on a hard line.
       OnlineBlur(
         thumbnailUrl = currentPlaylist.thumbnail,
-        modifier =
-          Modifier.fillMaxWidth()
-            .height(headerHeight)
-            .offset { IntOffset(0, -lazyListState.firstVisibleItemScrollOffset) }
+        modifier = Modifier.fillMaxWidth().height(headerHeight + 260.dp)
       )
     }
 

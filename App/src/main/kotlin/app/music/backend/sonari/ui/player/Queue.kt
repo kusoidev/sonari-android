@@ -96,11 +96,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -112,6 +116,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
@@ -174,6 +179,9 @@ fun Queue(
   showInlineLyrics: Boolean,
   playerBackground: PlayerBackgroundStyle = PlayerBackgroundStyle.DEFAULT,
   onToggleLyrics: () -> Unit = {},
+  artworkFlight: ArtworkFlight? = null,
+  artworkUrl: String? = null,
+  artworkCrop: Boolean = false,
 ) {
   val context = LocalContext.current
   val haptic = LocalHapticFeedback.current
@@ -728,17 +736,42 @@ fun Queue(
           modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
           AsyncImage(
-            model = mediaMetadata?.thumbnailUrl,
+            // The same bitmap the player and the cover in flight draw, at the same scale: the
+            // change-over at the end of the flight has to be pixel for pixel the same picture.
+            model = artworkUrl ?: mediaMetadata?.thumbnailUrl,
             contentDescription = null,
+            contentScale = if (artworkCrop) ContentScale.Crop else ContentScale.Fit,
             modifier =
               Modifier.size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
+                // The same backing the player puts behind its artwork, so a thumbnail that is not
+                // square keeps its bars through the change-over instead of losing them.
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .onGloballyPositioned { coordinates ->
+                  // Where this slot is right now, in root pixels. It travels up with the sheet, and
+                  // the cover being carried from the player is aimed at exactly this, so the two are
+                  // one cover all the way instead of two that swap places.
+                  artworkFlight?.queue =
+                    ArtworkSlot(
+                      rect = Rect(coordinates.positionInRoot(), coordinates.size.toSize()),
+                      cornerRadius = 8.dp,
+                    )
+                }
                 .graphicsLayer {
                   val p = state.progress.coerceIn(0f, 1f)
-                  alpha = p
-                  val grow = 0.55f + 0.45f * p
-                  scaleX = grow
-                  scaleY = grow
+                  if (artworkUrl != null && artworkFlight?.player != null) {
+                    // Solid from the moment the travelling cover has landed on this slot, and hidden
+                    // before that - never half transparent underneath a half transparent travelling
+                    // cover, which is what let the screen show through and blink at the change-over.
+                    alpha = if (slotHoldsCover(p)) 1f else 0f
+                  } else {
+                    // Nothing to carry the cover from (the player is showing lyrics, say): the slot
+                    // brings itself in as it always did.
+                    alpha = p
+                    val grow = 0.55f + 0.45f * p
+                    scaleX = grow
+                    scaleY = grow
+                  }
                 }
           )
 

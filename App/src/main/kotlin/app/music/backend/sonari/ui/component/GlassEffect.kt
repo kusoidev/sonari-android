@@ -58,6 +58,8 @@ data class GlassEffectConfig(
   val playerEnabled: Boolean = true,
   val miniPlayerEnabled: Boolean = true,
   val navBarEnabled: Boolean = true,
+  /** Panels: settings groups, search bars, menus and sheets - the wider glass surfaces. */
+  val panelsEnabled: Boolean = true,
 ) {
   /**
    * Whether the glass effect should be rendered for [component], taking the master switch and the
@@ -69,6 +71,7 @@ data class GlassEffectConfig(
         GlassComponent.PLAYER -> playerEnabled
         GlassComponent.MINI_PLAYER -> miniPlayerEnabled
         GlassComponent.NAV_BAR -> navBarEnabled
+        GlassComponent.PANELS -> panelsEnabled
       }
 }
 
@@ -77,6 +80,7 @@ enum class GlassComponent {
   PLAYER,
   MINI_PLAYER,
   NAV_BAR,
+  PANELS,
 }
 
 /**
@@ -114,6 +118,19 @@ fun glassResolutionScale(blurRadiusDp: Float): Float {
  * [android.graphics.RenderNode], which is available from Android 12 (API 31).
  */
 fun isGlassSupported(sdkInt: Int = Build.VERSION.SDK_INT): Boolean = sdkInt >= Build.VERSION_CODES.S
+
+/**
+ * Whether this device should get the cheap glass. A low-RAM phone, or any phone while the system is
+ * in power saving, gets the blur and the tint but none of the per-frame work that makes the effect
+ * expensive: no lens refraction, no chromatic dispersion, no tilt sensor, and a lighter blur. The
+ * effect is still glass - it just stops being the reason the phone drops frames.
+ */
+fun isGlassLowEnd(context: Context): Boolean {
+  val activityManager =
+    context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+  val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+  return activityManager?.isLowRamDevice == true || powerManager?.isPowerSaveMode == true
+}
 
 /**
  * Maps the user-facing vibrancy preference (0..2, default 1) to a saturation multiplier. A value of
@@ -202,13 +219,19 @@ fun Modifier.liquidGlass(
   blurRadiusDp: Float = config.blurRadius,
 ): Modifier {
   if (!isGlassSupported()) return this
+  val context = LocalContext.current
+  val lowEnd = remember(context) { isGlassLowEnd(context) }
+  // On a low-RAM phone, or in power saving, the glass keeps its blur and its tint but gives up the
+  // per-frame lens work and the tilt sensor, and blurs a little less. Still glass, no dropped frames.
+  val edgeEffects = applyEdgeEffects && !lowEnd
+  val blurDp = if (lowEnd) blurRadiusDp * 0.6f else blurRadiusDp
   val backdrop = LocalAppBackdrop.current
   val density = LocalDensity.current
-  val tilt = rememberGlassTilt(enabled = applyEdgeEffects)
-  val resolutionScale = glassResolutionScale(blurRadiusDp)
+  val tilt = rememberGlassTilt(enabled = edgeEffects)
+  val resolutionScale = glassResolutionScale(blurDp)
   // Pixel-sized effect parameters operate on the downscaled backdrop layer, so
   // they are pre-multiplied by the resolution scale to keep the same visual size.
-  val blurPx = with(density) { blurRadiusDp.dp.toPx() } * resolutionScale
+  val blurPx = with(density) { blurDp.dp.toPx() } * resolutionScale
   val saturation = glassSaturation(config.vibrancy)
   val lensHeightPx = with(density) { (config.lensHeight * LENS_MAX_DP).dp.toPx() } * resolutionScale
   val lensAmountPx = with(density) { (config.lensAmount * LENS_MAX_DP).dp.toPx() } * resolutionScale
@@ -234,20 +257,20 @@ fun Modifier.liquidGlass(
         blur(blurPx)
       }
       if (
-        applyEdgeEffects &&
+        edgeEffects &&
           Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
           (lensHeightPx > 0f || lensAmountPx > 0f)
       ) {
         lens(
           refractionHeight = lensHeightPx,
           refractionAmount = lensAmountPx,
-          depthEffect = config.depthEffect,
-          chromaticAberration = config.chromaticAberration,
+          depthEffect = config.depthEffect && !lowEnd,
+          chromaticAberration = config.chromaticAberration && !lowEnd,
         )
       }
     },
-    highlight = if (applyEdgeEffects) ({ Highlight.Default }) else null,
-    shadow = if (applyEdgeEffects) ({ Shadow.Default }) else null,
+    highlight = if (edgeEffects) ({ Highlight.Default }) else null,
+    shadow = if (edgeEffects) ({ Shadow.Default }) else null,
     onDrawSurface = {
       if (config.surfaceOpacity > 0f) {
         drawRect(
@@ -255,7 +278,7 @@ fun Modifier.liquidGlass(
           size = size,
         )
       }
-      if (applyEdgeEffects) {
+      if (edgeEffects) {
         // Specular reflection sweep that moves with device tilt, so the glass
         // highlight behaves like a real reflective surface.
         val shiftX = tilt.x * size.width * 0.28f
@@ -288,4 +311,23 @@ fun Modifier.liquidGlass(
     },
     backdropScale = resolutionScale,
   )
+}
+
+
+/**
+ * Renders this composable as a glass panel: the wider, calmer surface used for settings groups,
+ * search bars, menus and sheets.
+ *
+ * Panels deliberately skip the edge treatment. A lens rim on a full-width panel reads as a stray
+ * band of light along its border, and skipping it also drops most of the cost of the effect, so
+ * panels stay smooth on modest hardware while the small pills keep their full refraction.
+ */
+@Composable
+fun Modifier.glassPanel(
+  config: GlassEffectConfig = LocalGlassEffectConfig.current,
+  shape: CornerBasedShape = RoundedCornerShape(24.dp),
+  component: GlassComponent = GlassComponent.PANELS,
+): Modifier {
+  if (!config.isEnabledFor(component)) return this
+  return liquidGlass(config = config, shape = shape, applyEdgeEffects = false)
 }

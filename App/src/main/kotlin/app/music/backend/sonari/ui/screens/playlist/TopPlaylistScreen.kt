@@ -246,10 +246,8 @@ fun TopPlaylistScreen(
 
   // Shuffling a playlist scrolls to the songs, spins the wheel there, then plays what it landed on.
   val (shuffleRoulette, shufflePlaylist) =
-    rememberPlaylistShuffle(songs.orEmpty(), state) { queue ->
-      playerConnection.playQueue(
-        ListQueue(title = name, items = queue.map { it.toMediaItem() })
-      )
+    rememberPlaylistShuffle(songs.orEmpty(), state) { items ->
+      playerConnection.playQueue(ListQueue(title = name, items = items))
     }
 
   Box(

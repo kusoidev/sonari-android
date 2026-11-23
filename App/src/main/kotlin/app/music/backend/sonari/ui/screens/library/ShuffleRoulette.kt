@@ -1,30 +1,20 @@
 package app.music.backend.sonari.ui.screens.library
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,24 +28,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.MediaItem
 import app.music.backend.sonari.db.entities.Song
+import app.music.backend.sonari.extensions.toMediaItem
 import java.util.concurrent.TimeUnit
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.exp
-import kotlin.math.floor
-import kotlin.math.sin
 import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import nl.dionsegijn.konfetti.compose.KonfettiView
 import nl.dionsegijn.konfetti.core.Party
 import nl.dionsegijn.konfetti.core.Position
@@ -89,6 +77,18 @@ class ShuffleRouletteState {
   var landed by mutableStateOf(false)
     private set
 
+  /**
+   * The song the last spin came to rest on, kept so its row stays lit after the spin is over: the
+   * pick is shown by the list itself, not by whatever the player happens to be doing.
+   */
+  var pickedSongId by mutableStateOf<String?>(null)
+    private set
+
+  /** Names the song a spin landed on. Cleared when the next spin starts. */
+  fun pick(songId: String?) {
+    pickedSongId = songId
+  }
+
   /** 0..1 how strongly the top and bottom of the screen are frosted. */
   var frost by mutableFloatStateOf(0f)
     private set
@@ -99,7 +99,10 @@ class ShuffleRouletteState {
 
   /** Called by the shuffle FAB. Ignored while a spin is already running. */
   fun begin() {
-    if (!running) tick++
+    if (!running) {
+      pickedSongId = null
+      tick++
+    }
   }
 
   /**
@@ -127,6 +130,7 @@ class ShuffleRouletteState {
     listState: LazyListState,
     headerItems: Int,
     songCount: Int,
+    onLanded: (Int) -> Unit = {},
   ): Int {
     if (running || songCount <= 0) return -1
     val rowPx = songRowPxOf(listState, headerItems)
@@ -165,6 +169,9 @@ class ShuffleRouletteState {
       speed = 0f
       val winner = paylineSong(listState, headerItems, songCount)
       landed = true
+      // The song the list stopped on starts playing now, so its row is lit as the spin ends rather
+      // than after the confetti has had its moment.
+      onLanded(winner)
       delay(900)
 
       frostAnim.animateTo(0f, tween(300)) { frost = value }
@@ -230,27 +237,35 @@ class ShuffleRouletteState {
     while (true) {
       val now = withFrameNanos { it }
       val t = ((now - startFrame) / 1_000_000f / durationMs).coerceIn(0f, 1f)
+      // Quintic ease-out: the list keeps most of its speed for the first half and then lets go in a
+      // long, quiet tail, which is how a wheel actually comes to rest rather than a cubic cut.
       val inverse = 1f - t
-      val eased = 1f - inverse * inverse * inverse
+      val eased = 1f - inverse * inverse * inverse * inverse * inverse
       val rowPx = songRowPxOf(listState, headerItems)
       if (rowPx <= 0f) break
+      // One read of the layout per frame: the row being aimed at and the payline are measured from
+      // the same snapshot, so the last pixels cannot disagree about where the line is.
+      val layout = listState.layoutInfo
       val targetInfo =
-        if (aimRow >= 0) listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == aimRow }
-        else null
+        if (aimRow >= 0) layout.visibleItemsInfo.firstOrNull { it.index == aimRow } else null
 
       val deltaPx =
         if (targetInfo != null) {
           // The row the roll is reaching for is on screen: consume the eased fraction of what is
           // actually left between it and the payline. The cap keeps one hitchy frame from turning
           // its share of the distance into a jump.
-          val paylinePx =
-            listState.layoutInfo.viewportSize.height / 2f - listState.layoutInfo.beforeContentPadding
+          val paylinePx = layout.viewportSize.height / 2f - layout.beforeContentPadding
           val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
           val previousEased =
-            1f - (1f - previousT) * (1f - previousT) * (1f - previousT)
+            1f - (1f - previousT) * (1f - previousT) * (1f - previousT) * (1f - previousT) *
+              (1f - previousT)
+          // On the roll's own last frame the whole remainder is taken, so the list comes to rest on
+          // the line inside the ease itself. Anything left for a correction afterwards is a second
+          // little move after the list has already stopped, which is what read as a shiver.
           val fraction =
-            if (eased >= 1f) 1f else (eased - previousEased) / (1f - previousEased)
-          remainingPx * fraction.coerceIn(0f, 0.35f)
+            if (t >= 1f || eased >= 1f) 1f
+            else (eased - previousEased) / (1f - previousEased)
+          remainingPx * fraction.coerceIn(0f, if (t >= 1f) 1f else 0.35f)
         } else {
           // The aim row has not scrolled into view yet: approximate in row units until it is,
           // and let the measured tail take over the moment it is.
@@ -275,28 +290,28 @@ class ShuffleRouletteState {
       previousFrame = now
       if (t >= 1f) break
     }
+    // Straight onto the line. It used to roll a few pixels past it and glide back, and that
+    // bounce was the whole list bobbing up and down just before the confetti.
     settleOnPayline(listState, aimRow)
     speed = 0f
   }
 
   /**
-   * The last few pixels of a landing, measured. A dropped or hitchy frame during the roll can leave
-   * a little distance; this finishes the glide over a couple of quiet frames instead of jumping, and
-   * never fights a list that has clamped at one of its ends.
+   * The last pixel of a landing, measured. The roll already takes whatever it has left on its final
+   * frame, so this only tidies a residual a dropped frame may have left behind - and it does it in a
+   * single move, on the frame after the roll. It used to halve the gap over several frames, which
+   * looked like the list crawling into place, and a slow crawl after the list has stopped reads as a
+   * shiver. A list clamped at one of its ends simply takes less, and nothing here fights it.
    */
   private suspend fun settleOnPayline(listState: LazyListState, targetRow: Int) {
     if (targetRow < 0) return
-    repeat(8) {
-      val info = listState.layoutInfo
-      val targetInfo = info.visibleItemsInfo.firstOrNull { it.index == targetRow } ?: return
-      val paylinePx = info.viewportSize.height / 2f - info.beforeContentPadding
-      val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
-      if (abs(remainingPx) < 0.5f) return
-      val step = if (abs(remainingPx) > 1f) remainingPx * 0.5f else remainingPx
-      val consumed = listState.scrollBy(step)
-      if (abs(consumed) < abs(step) * 0.5f) return
-      withFrameNanos { }
-    }
+    val info = listState.layoutInfo
+    val targetInfo = info.visibleItemsInfo.firstOrNull { it.index == targetRow } ?: return
+    val paylinePx = info.viewportSize.height / 2f - info.beforeContentPadding
+    val remainingPx = targetInfo.offset + targetInfo.size / 2f - paylinePx
+    if (abs(remainingPx) < 0.5f) return
+    // Half a row at most: a bigger gap means the list is against an end and has nothing to give.
+    listState.scrollBy(remainingPx.coerceIn(-targetInfo.size / 2f, targetInfo.size / 2f))
   }
 
   /** Where the list is, in song-row units: 3.5 means halfway through the fourth row. */
@@ -356,9 +371,9 @@ fun BoxScope.ShuffleFrostOverlay(state: ShuffleRouletteState, modifier: Modifier
 }
 
 /**
- * The "> song <" brackets around the middle of the list. Every row that turns past knocks one of
- * them, and the knock lands from above: the bracket is driven down first and springs back up over
- * its rest, then settles. The two trade the blows half a beat apart, harder the faster the list runs.
+ * The hand's share of the landing: one haptic tap the moment a song comes to rest, and nothing
+ * drawn on the screen. The list is the wheel, the confetti is the prize, and a marker over the
+ * middle of it just gets in the way.
  */
 @Composable
 fun BoxScope.ShuffleNeedleOverlay(
@@ -366,77 +381,26 @@ fun BoxScope.ShuffleNeedleOverlay(
   modifier: Modifier = Modifier,
 ) {
   if (!state.visible) return
-  val jiggle by
-    rememberInfiniteTransition(label = "shuffleNeedle").animateFloat(
-      initialValue = 0f,
-      targetValue = 1f,
-      animationSpec = infiniteRepeatable(tween(durationMillis = 260, easing = LinearEasing)),
-      label = "shuffleNeedleJiggle",
-    )
-  val shown by
-    animateFloatAsState(
-      targetValue = if (state.visible) 1f else 0f,
-      animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-      label = "shuffleNeedleAlpha",
-    )
-  Box(
-    modifier = modifier.fillMaxSize().graphicsLayer { alpha = shown * state.frost },
-    contentAlignment = Alignment.Center,
-  ) {
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
-    ) {
-      BracketMark(speed = state.speed, phase = jiggle, pointsRight = true)
-      BracketMark(speed = state.speed, phase = jiggle + 0.5f, pointsRight = false)
-    }
-  }
-}
-
-@Composable
-private fun BracketMark(speed: Float, phase: Float, pointsRight: Boolean) {
-  // A song is knocked down into the brackets, so it hits from above and the bracket gives way
-  // downwards: a quick dip, then a spring back up past its rest and a settle. Catching a rock in an
-  // open hand does the same thing - the hand drops first, it never pops up to meet it.
-  // The sine starts at zero rather than at its peak, so the very first movement is the dip, and the
-  // decaying envelope keeps the first dip the deepest.
-  val beat = phase - floor(phase)
-  val swing = exp(-4.2f * beat) * sin(6.2f * PI.toFloat() * beat)
-  val hit = (swing * speed).coerceIn(-1f, 1f)
-  val tint = MaterialTheme.colorScheme.primary
-  val mirror = if (pointsRight) 1f else -1f
-
-  Canvas(
-    modifier =
-      Modifier.size(26.dp).graphicsLayer {
-        translationY = hit * 7.dp.toPx()
-        rotationZ = hit * 3f * (if (pointsRight) 1f else -1f)
-        scaleX = mirror * (1f + 0.05f * hit)
-        // squashed as it is driven down, stretched slightly on the way back up
-        scaleY = 1f - 0.10f * hit
-      },
-  ) {
-    // A rounded angle bracket, drawn rather than a glyph so the two sides stay optically equal.
-    val stroke = size.minDimension * 0.17f
-    val path =
-      Path().apply {
-        moveTo(size.width * 0.24f, size.height * 0.10f)
-        lineTo(size.width * 0.80f, size.height * 0.50f)
-        lineTo(size.width * 0.24f, size.height * 0.90f)
-      }
-    drawPath(
-      path = path,
-      color = tint,
-      style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
-    )
+  val haptics = LocalHapticFeedback.current
+  LaunchedEffect(state.landed) {
+    if (state.landed) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
   }
 }
 
 /** A burst of confetti out of the middle of the list once it has stopped on a song. */
 @Composable
 fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = Modifier) {
-  if (!state.landed) return
+  // The burst waits a beat after the landing instead of sharing a frame with the queue being
+  // handed to the player.
+  var burst by remember { mutableStateOf(false) }
+  LaunchedEffect(state.landed) {
+    burst = false
+    if (state.landed) {
+      delay(180)
+      burst = state.landed
+    }
+  }
+  if (!burst) return
   val parties =
     listOf(
       Party(
@@ -445,7 +409,9 @@ fun BoxScope.ShuffleConfetti(state: ShuffleRouletteState, modifier: Modifier = M
         damping = 0.9f,
         spread = 360,
         colors = listOf(0xfce18a, 0xff726d, 0xf4306d, 0xb48def, 0x4cd7f0),
-        emitter = Emitter(duration = 260, TimeUnit.MILLISECONDS).max(180),
+        // Kept small on purpose: this goes off at the same instant playback starts, and a
+        // screenful of particles is what makes the app stutter right after it picks a song.
+        emitter = Emitter(duration = 200, TimeUnit.MILLISECONDS).max(70),
         position = Position.Relative(0.5, 0.5),
       )
     )
@@ -468,7 +434,7 @@ fun rememberPlaylistShuffle(
   songs: List<Song>,
   listState: LazyListState,
   headerItems: Int = PLAYLIST_HEADER_ITEMS,
-  onQueue: (List<Song>) -> Unit,
+  onQueue: (List<MediaItem>) -> Unit,
 ): Pair<ShuffleRouletteState, () -> Unit> {
   val roulette = remember { ShuffleRouletteState() }
   val scope = rememberCoroutineScope()
@@ -479,12 +445,23 @@ fun rememberPlaylistShuffle(
     val songsNow = currentSongs
     if (songsNow.isNotEmpty()) {
       scope.launch {
-        val order = songsNow.shuffled()
-        val winnerRow = roulette.spin(listState, currentHeaderItems, songsNow.size)
-        if (winnerRow in songsNow.indices) {
-          // What the brackets came to rest on plays first, then everything else in shuffled order.
-          val at = order.indexOfFirst { it.id == songsNow[winnerRow].id }.coerceAtLeast(0)
-          currentOnQueue(order.drop(at) + order.take(at))
+        // The queue is made before the roll starts. Building a few hundred media items on the main
+        // thread lands in the very frame the spin stops, and that is the jerk right before the
+        // confetti; done here, it is spread over a screen that is already moving.
+        val order = withContext(Dispatchers.Default) { songsNow.shuffled() }
+        val items = withContext(Dispatchers.Default) { order.map { it.toMediaItem() } }
+        var landedRow = -1
+        // The row is lit the moment the list stops, but the player is handed the queue only once
+        // the spin is over: the mini player sliding in changes the list's insets, and doing that
+        // while the list is still settling is what made the songs bob up and down.
+        roulette.spin(listState, currentHeaderItems, songsNow.size) { winnerRow ->
+          landedRow = winnerRow
+          if (winnerRow in songsNow.indices) roulette.pick(songsNow[winnerRow].id)
+        }
+        if (landedRow in songsNow.indices) {
+          // What the list came to rest on plays first, then everything else in shuffled order.
+          val at = order.indexOfFirst { it.id == songsNow[landedRow].id }.coerceAtLeast(0)
+          currentOnQueue(items.drop(at) + items.take(at))
         }
       }
     }
@@ -516,7 +493,7 @@ fun BoxScope.ShuffleInputBlocker(state: ShuffleRouletteState) {
 }
 
 /**
- * Everything the spin draws over a playlist: the frosted edges, the brackets at the needle, the
+ * Everything the spin draws over a playlist: the frosted edges, the payline in the middle, the
  * confetti when it lands, and a blocker so the screen cannot be touched until it stops. The playlist
  * itself is what turns, so there is nothing to draw over it.
  *

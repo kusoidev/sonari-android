@@ -220,6 +220,11 @@ import app.music.backend.sonari.ui.component.*
 import app.music.backend.sonari.ui.component.AppFloatingNavBar
 import app.music.backend.sonari.ui.component.GlassEffectConfig
 import app.music.backend.sonari.ui.component.LocalAppBackdrop
+import app.music.backend.sonari.ui.component.LocalLiquidState
+import app.music.backend.sonari.ui.component.isGlassLowEnd
+import app.music.backend.sonari.ui.component.isGlassSupported
+import io.github.fletchmckee.liquid.liquefiable
+import io.github.fletchmckee.liquid.rememberLiquidState
 import app.music.backend.sonari.ui.component.LocalGlassEffectConfig
 import app.music.backend.sonari.ui.component.RingtoneProgressDialog
 import app.music.backend.sonari.ui.component.RingtoneTrimmerDialog
@@ -497,9 +502,30 @@ class MainActivity : ComponentActivity() {
   @OptIn(ExperimentalMaterial3Api::class)
   override fun onCreate(savedInstanceState: Bundle?) {
     introPlays = savedInstanceState == null
-    val splashScreen = installSplashScreen()
-    splashScreen.handOffToLaunchIntro { introPlays }
+
+    // Below Android 12 the compat splash inflates splash_screen_view, and that layout sizes its
+    // icon with ?attr/splashScreenIconSize, an attribute only a Theme.SplashScreen parent
+    // defines. Theme.sonari is not one, so on some devices (a Huawei on Android 10 among them)
+    // the inflate throws UnsupportedOperationException and the activity dies before it starts.
+    // On Android 12 and newer the platform draws the splash and no layout is inflated at all,
+    // which is why only older phones ever hit this. The launch intro is the real boot screen
+    // there anyway, so the splash is set up on 12+ only, and a splash that fails for any other
+    // reason must never be allowed to take the activity down with it.
+    val splashScreen =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        runCatching {
+            installSplashScreen().also { splash -> splash.handOffToLaunchIntro { introPlays } }
+          }
+          .onFailure { timber.log.Timber.tag("LaunchIntro").e(it, "splash screen unavailable") }
+          .getOrNull()
+      } else {
+        null
+      }
+
     if (introPlays) LaunchGate.begin() else LaunchGate.skip()
+    // With no splash waiting to be dismissed, the intro takes off at once instead of idling out
+    // its hand-off timeout.
+    if (splashScreen == null) LaunchGate.onSplashGone()
     super.onCreate(savedInstanceState)
 
     try {
@@ -1397,6 +1423,16 @@ class MainActivity : ComponentActivity() {
           drawContent()
         }
 
+        // The liquid glass source. The screen content is tagged liquefiable below and the chrome
+        // (nav bar, mini player) samples it through the liquid shaders; when the effect is off, or
+        // the platform is too old for it, nothing is tagged and the chrome keeps its own pipeline.
+        val liquidState = rememberLiquidState()
+        // Sampling the screen into a second layer costs real GPU time, so a low-RAM phone or a
+        // phone in power saving keeps the cheaper pipeline it already had instead.
+        val liquidSampling =
+          glassEffectConfig.globalEnabled && isGlassSupported() &&
+            !remember { isGlassLowEnd(this@MainActivity) }
+
         val ringtoneViewModel: RingtoneViewModel = viewModel()
         val ringtoneUiState by ringtoneViewModel.uiState.collectAsState()
 
@@ -1423,6 +1459,7 @@ class MainActivity : ComponentActivity() {
           LocalHapticFeedback provides customHapticFeedback,
           LocalGlassEffectConfig provides glassEffectConfig,
           LocalAppBackdrop provides appBackdrop,
+          LocalLiquidState provides if (liquidSampling) liquidState else null,
           LocalRingtoneViewModel provides ringtoneViewModel,
           LocalDatabase provides database,
           LocalContentColor provides
@@ -1895,6 +1932,7 @@ class MainActivity : ComponentActivity() {
                     },
                     modifier =
                       Modifier.layerBackdrop(appBackdrop)
+                        .then(if (liquidSampling) Modifier.liquefiable(liquidState) else Modifier)
                         .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)
                   ) {
                     navigationBuilder(
