@@ -1541,10 +1541,11 @@ fun BottomSheetPlayer(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                     onClick = {
-                      mediaMetadata.album?.let { album ->
-                        navController.navigate("album/${album.id}")
-                        state.collapseSoft()
-                      }
+                      // Tapping the title used to open the album page. For a single, a Topic
+                      // upload or anything without a real album, that page is a generated one
+                      // with a wall of channel names on it, and it is reached by accident far
+                      // more often than on purpose. Nothing happens now; the long press still
+                      // copies the title.
                     },
                     onLongClick = {
                       val clip =
