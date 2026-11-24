@@ -102,6 +102,7 @@ import app.music.backend.sonari.constants.IpVersionKey
 import app.music.backend.sonari.constants.LastFMSessionKey
 import app.music.backend.sonari.constants.LastFMUseNowPlaying
 import app.music.backend.sonari.constants.LastFMUseSendLikes
+import app.music.backend.sonari.constants.LyricsInMediaCardKey
 import app.music.backend.sonari.constants.MediaSessionConstants
 import app.music.backend.sonari.constants.MediaSessionConstants.CommandToggleLike
 import app.music.backend.sonari.constants.MediaSessionConstants.CommandToggleRepeatMode
@@ -157,7 +158,9 @@ import app.music.backend.sonari.extensions.setOffloadEnabled
 import app.music.backend.sonari.extensions.toEnum
 import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.generate.SongPlayStatsRepository
+import app.music.backend.sonari.lyrics.LyricsEntry
 import app.music.backend.sonari.lyrics.LyricsHelper
+import app.music.backend.sonari.lyrics.LyricsUtils
 import app.music.backend.sonari.models.PersistPlayerState
 import app.music.backend.sonari.models.PersistQueue
 import app.music.backend.sonari.models.toMediaMetadata
@@ -229,6 +232,9 @@ import timber.log.Timber
 
 private const val INSTANT_SILENCE_SKIP_STEP_MS = 15_000L
 private const val INSTANT_SILENCE_SKIP_SETTLE_MS = 350L
+
+/** How much of a lyric line the media card gets: more than this and the card has nowhere to put it. */
+private const val MediaCardLineLimit = 60
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -645,6 +651,68 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     }
   }
 
+  private var lyricsMediaCardJob: Job? = null
+
+  /**
+   * Follows the playing song's synced lyrics and keeps [LyricsMediaCard] on the line being sung.
+   *
+   * The lyrics are looked up and parsed once per track; after that a tick only moves a cursor
+   * through them. The card is only told when the line actually changes, so it is not woken for
+   * every tick, and nothing here touches the player: the song keeps playing untouched.
+   */
+  private suspend fun followLyricsForMediaCard() {
+    var loadedId: String? = null
+    var entries: List<LyricsEntry> = emptyList()
+    while (true) {
+      if (!playerInitialized.value || !player.isPlaying) {
+        delay(1000)
+        continue
+      }
+      val id = player.currentMediaItem?.mediaId
+      if (id == null) {
+        delay(1000)
+        continue
+      }
+      if (id != loadedId) {
+        loadedId = id
+        entries = loadSyncedLyrics(id)
+      }
+      val position = player.currentPosition
+      val line =
+        entries
+          .lastOrNull { it.time <= position }
+          ?.text
+          ?.trim()
+          ?.takeIf { it.isNotEmpty() }
+          ?.let { if (it.length <= MediaCardLineLimit) it else it.take(MediaCardLineLimit - 1).trimEnd() + "…" }
+      if (line != LyricsMediaCard.line) {
+        LyricsMediaCard.line = line
+        notifyMediaCardChanged()
+      }
+      delay(250)
+    }
+  }
+
+  private suspend fun loadSyncedLyrics(songId: String): List<LyricsEntry> {
+    val text =
+      try {
+        database.lyrics(songId).firstOrNull()?.lyrics
+      } catch (e: Exception) {
+        null
+      }
+    if (text.isNullOrBlank() || !text.trim().startsWith("[")) return emptyList()
+    return try {
+      LyricsUtils.parseLyrics(text).filter { it.text.isNotBlank() }
+    } catch (e: Exception) {
+      emptyList()
+    }
+  }
+
+  private fun notifyMediaCardChanged() {
+    if (!::mediaSession.isInitialized) return
+    (mediaSession.player as? SessionArtworkPlayer)?.notifyMediaCardChanged()
+  }
+
   override fun onCreate() {
     super.onCreate()
     isRunning = true
@@ -691,6 +759,30 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
         }
         .distinctUntilChanged()
         .collect { scrobbleManager?.useNowPlaying = it }
+    }
+    scope.launch {
+      dataStore.data
+        .map {
+          (try {
+            it[LyricsInMediaCardKey]
+          } catch (e: Exception) {
+            null
+          }) ?: false
+        }
+        .distinctUntilChanged()
+        .collect { enabled ->
+          lyricsMediaCardJob?.cancel()
+          lyricsMediaCardJob =
+            if (enabled) {
+              scope.launch { followLyricsForMediaCard() }
+            } else {
+              if (LyricsMediaCard.line != null) {
+                LyricsMediaCard.line = null
+                notifyMediaCardChanged()
+              }
+              null
+            }
+        }
     }
     scope.launch {
       dataStore.data

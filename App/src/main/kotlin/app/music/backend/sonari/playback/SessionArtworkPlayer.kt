@@ -56,8 +56,40 @@ class SessionArtworkPlayer(
    */
   private fun sessionMetadata(metadata: MediaMetadata): MediaMetadata {
     val mapped = metadata.withAutomotiveArtworkUri(context)
-    if (mapped.artworkUri == null || mapped.artworkData == null) return mapped
-    return mapped.buildUpon().setArtworkData(null, null).build()
+    val cleaned =
+      if (mapped.artworkUri == null || mapped.artworkData == null) mapped
+      else mapped.buildUpon().setArtworkData(null, null).build()
+    return withLyricsLine(cleaned)
+  }
+
+  /**
+   * Stands the current lyric line in for the artist on the media card.
+   *
+   * The card an OEM draws - a Live Alert, a lock screen, a head unit - has room for the title and
+   * one more line, and that line is the artist: Media3's notification provider reads
+   * `MediaMetadata.artist` for it, and anything drawing from the session reads the same field.
+   * [LyricsMediaCard] holds the line while that is switched on, and is empty otherwise, so this
+   * changes nothing unless the user asked for it. The subtitle is set as well, because a surface
+   * that shows a subtitle instead of an artist should still see the line.
+   */
+  private fun withLyricsLine(metadata: MediaMetadata): MediaMetadata {
+    val line = LyricsMediaCard.line?.takeIf { it.isNotBlank() } ?: return metadata
+    if (metadata.artist?.toString() == line) return metadata
+    return metadata.buildUpon().setArtist(line).setSubtitle(line).build()
+  }
+
+  /**
+   * Tells the session its metadata changed, so the card redraws with the new line.
+   *
+   * A lyric line is not a player event, so nothing would tell the session about it on its own. The
+   * session listens to this wrapper and republishes what it reads, which is what makes the
+   * notification and every surface drawing from the session pick the line up. Nothing is done to
+   * the player itself: playback is untouched.
+   */
+  fun notifyMediaCardChanged() {
+    val metadata = super.getMediaMetadata()
+    if (listeners.isEmpty()) return
+    listeners.values.toList().forEach { it.onMediaMetadataChanged(metadata) }
   }
 
   override fun getCurrentMediaItem(): MediaItem? =

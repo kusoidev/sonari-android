@@ -90,6 +90,7 @@ import app.music.backend.sonari.constants.ExportDirectoryUriKey
 import app.music.backend.sonari.constants.ExportedSongIdsKey
 import app.music.backend.sonari.constants.ExportingSongIdsKey
 import app.music.backend.sonari.constants.ListItemHeight
+import app.music.backend.sonari.constants.LyricsInMediaCardKey
 import app.music.backend.sonari.constants.VarispeedKey
 
 import app.music.backend.sonari.constants.QueueEditLockKey
@@ -198,6 +199,8 @@ fun PlayerMenu(
   val (exportedSongIds) = rememberPreference(key = ExportedSongIdsKey, defaultValue = "")
   val (showLyricsOnPlayer, onShowLyricsOnPlayerChange) =
     rememberPreference(key = ShowLyricsOnPlayerKey, defaultValue = false)
+  val (lyricsInMediaCard, onLyricsInMediaCardChange) =
+    rememberPreference(key = LyricsInMediaCardKey, defaultValue = false)
 
   val (exportProgressString) =
     rememberPreference(key = app.music.backend.sonari.constants.ExportProgressKey, defaultValue = "")
@@ -739,6 +742,29 @@ fun PlayerMenu(
                 },
                 onClick = {
                   onShowLyricsOnPlayerChange(!showLyricsOnPlayer)
+                  onDismiss()
+                }
+              )
+            )
+            add(
+              Material3MenuItemData(
+                title = { Text(text = "Lyrics on media card") },
+                description = {
+                  Text(
+                    text =
+                      if (lyricsInMediaCard) "The line being sung stands in for the artist"
+                      else "Off: the card shows the artist"
+                  )
+                },
+                icon = {
+                  Icon(
+                    painter = painterResource(R.drawable.lyrics),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                  )
+                },
+                onClick = {
+                  onLyricsInMediaCardChange(!lyricsInMediaCard)
                   onDismiss()
                 }
               )
