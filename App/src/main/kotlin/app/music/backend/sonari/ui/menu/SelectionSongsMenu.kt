@@ -472,13 +472,12 @@ fun SelectionSongMenu(
                   },
                   onClick = {
                     onDismiss()
-                    var i = 0
                     database.query {
-                      songPosition.forEach { cur ->
-                        move(cur.playlistId, cur.position - i, Int.MAX_VALUE)
-                        delete(cur.copy(position = Int.MAX_VALUE))
-                        i++
-                      }
+                      songPosition
+                        .groupBy { it.playlistId }
+                        .forEach { (playlistId, maps) ->
+                          removeFromPlaylist(playlistId, maps.map { it.id })
+                        }
                     }
                     clearAction()
                   }

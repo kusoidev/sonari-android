@@ -583,8 +583,7 @@ fun LocalPlaylistScreen(
                   }
                 }
               }
-              move(currentItem.map.playlistId, currentItem.map.position, Int.MAX_VALUE)
-              delete(currentItem.map.copy(position = Int.MAX_VALUE))
+              removeFromPlaylist(currentItem.map.playlistId, listOf(currentItem.map.id))
             }
           }
 

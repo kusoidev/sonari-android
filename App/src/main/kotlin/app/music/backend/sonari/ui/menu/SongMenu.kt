@@ -701,8 +701,7 @@ fun SongMenu(
                           }
                         }
                       }
-                      move(playlistSong.map.playlistId, playlistSong.map.position, Int.MAX_VALUE)
-                      delete(playlistSong.map.copy(position = Int.MAX_VALUE))
+                      removeFromPlaylist(playlistSong.map.playlistId, listOf(playlistSong.map.id))
                     }
                     onDismiss()
                   }

@@ -221,8 +221,13 @@ interface DatabaseDao {
   )
   fun albumSongs(albumId: String): Flow<List<Song>>
 
+  // A map row whose song is gone would make Room's non-null relation throw while the flow is being
+  // collected, which leaves the playlist frozen on whatever it was showing last. Skipping those
+  // rows means a playlist can never be held hostage by a stale entry.
   @Transaction
-  @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
+  @Query(
+    "SELECT * FROM playlist_song_map WHERE playlistId = :playlistId AND songId IN (SELECT id FROM song) ORDER BY position"
+  )
   fun playlistSongs(playlistId: String): Flow<List<PlaylistSong>>
 
   @Transaction
@@ -1870,6 +1875,54 @@ interface DatabaseDao {
   @Query("DELETE FROM playCount WHERE song NOT IN (SELECT id FROM song)") fun prunePlayCounts()
 
   @Query("DELETE FROM song WHERE id IN (:songIds)") fun deleteSongsByIds(songIds: List<String>)
+
+  @Query("DELETE FROM playlist_song_map WHERE songId IN (:songIds)")
+  fun deletePlaylistSongMapsBySongIds(songIds: List<String>)
+
+  /**
+   * Deletes the songs themselves, after taking them out of every playlist first.
+   *
+   * The foreign key would cascade on its own, but only while it is enforced on the connection that
+   * runs the delete. Removing the playlist rows here as well means a deleted song cannot be left
+   * behind in a playlist, whatever state the database was opened in.
+   */
+  @Transaction
+  fun deleteSongsCompletely(songIds: List<String>) {
+    if (songIds.isEmpty()) return
+    deletePlaylistSongMapsBySongIds(songIds)
+    songIds.forEach { songId ->
+      deleteSongArtistMaps(songId)
+      deleteSongAlbumMaps(songId)
+    }
+    deleteSongsByIds(songIds)
+  }
+
+  @Query("DELETE FROM playlist_song_map WHERE id = :mapId")
+  fun deletePlaylistSongMapById(mapId: Int)
+
+  /** Rewrites the playlist as positions 0..n-1 so a removal leaves neither a gap nor a duplicate. */
+  @Transaction
+  fun renumberPlaylistSongs(playlistId: String) {
+    playlistSongMaps(playlistId, 0)
+      .sortedWith(compareBy({ it.position }, { it.id }))
+      .forEachIndexed { index, map ->
+        if (map.position != index) update(map.copy(position = index))
+      }
+  }
+
+  /**
+   * Takes [mapIds] out of [playlistId].
+   *
+   * The rows are deleted by primary key and the rest renumbered afterwards, instead of moving the
+   * removed row to a placeholder position first: that left the entry in the playlist whenever the
+   * second step did not happen, and a removal that only sometimes works is a removal that does not.
+   */
+  @Transaction
+  fun removeFromPlaylist(playlistId: String, mapIds: List<Int>) {
+    if (mapIds.isEmpty()) return
+    mapIds.forEach { deletePlaylistSongMapById(it) }
+    renumberPlaylistSongs(playlistId)
+  }
 
   @Query("DELETE FROM song_artist_map WHERE songId = :songId")
   fun deleteSongArtistMaps(songId: String)

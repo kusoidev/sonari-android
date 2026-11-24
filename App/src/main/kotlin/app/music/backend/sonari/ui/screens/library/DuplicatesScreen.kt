@@ -108,13 +108,7 @@ private fun findDuplicateGroups(songs: List<Song>): List<DuplicateGroup> {
 }
 
 private fun removeLocalSongs(database: MusicDatabase, songIds: List<String>) {
-  database.query {
-    songIds.forEach { songId ->
-      deleteSongArtistMaps(songId)
-      deleteSongAlbumMaps(songId)
-    }
-    deleteSongsByIds(songIds)
-  }
+  database.query { deleteSongsCompletely(songIds) }
 }
 
 private fun durationText(seconds: Int): String {

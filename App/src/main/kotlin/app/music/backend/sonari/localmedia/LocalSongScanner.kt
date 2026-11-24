@@ -113,7 +113,7 @@ constructor(
             return@withTransaction
           }
         } else {
-          removedIds.chunked(SqlBatchSize).forEach(::deleteSongsByIds)
+          removedIds.chunked(SqlBatchSize).forEach(::deleteSongsCompletely)
         }
 
         val existingSongs = loadSongs(scannedIds)
