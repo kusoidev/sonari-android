@@ -27,6 +27,7 @@ import app.music.backend.sonari.utils.PlaybackLogManager
 import app.music.backend.sonari.utils.dataStore
 import app.music.backend.sonari.utils.reportException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -221,9 +222,8 @@ class PlayerConnection(
     playWhenReady.value = newPlayer.playWhenReady
     mediaMetadata.value = newPlayer.currentMetadata
     queueTitle.value = service.queueTitle
-    queueWindows.value = newPlayer.getQueueWindows()
-    currentWindowIndex.value = newPlayer.getCurrentQueueIndex()
     currentMediaItemIndex.value = newPlayer.currentMediaItemIndex
+    refreshQueueState()
     shuffleModeEnabled.value = newPlayer.shuffleModeEnabled
     repeatMode.value = newPlayer.repeatMode
 
@@ -508,17 +508,15 @@ class PlayerConnection(
     reason: Int,
   ) {
     mediaMetadata.value = player.currentMediaItem?.metadata ?: player.currentMetadata
-    queueWindows.value = player.getQueueWindows()
     queueTitle.value = service.queueTitle
     currentMediaItemIndex.value = player.currentMediaItemIndex
-    currentWindowIndex.value = player.getCurrentQueueIndex()
+    refreshQueueState()
     updateCanSkipPreviousAndNext()
   }
 
   override fun onShuffleModeEnabledChanged(enabled: Boolean) {
     shuffleModeEnabled.value = enabled
-    queueWindows.value = player.getQueueWindows()
-    currentWindowIndex.value = player.getCurrentQueueIndex()
+    refreshQueueState()
     updateCanSkipPreviousAndNext()
   }
 
@@ -533,6 +531,37 @@ class PlayerConnection(
       PlaybackLogManager.log(PlaybackLogLevel.ERROR, "Player Error", playbackError.message)
     }
     error.value = playbackError
+  }
+
+  private var queueStateJob: Job? = null
+
+  @Volatile private var queueStateGeneration = 0
+
+  /**
+   * Rebuilds [queueWindows] and [currentWindowIndex] for the queue as it stands right now.
+   *
+   * Walking the queue allocates a window for every item, so on a few thousand songs it is far too
+   * much to run inside a player callback: turning shuffle on reports a timeline change and a
+   * shuffle change back to back, and doing the walk twice there is what made the first shuffle of a
+   * long playlist stutter. The timeline and the two indexes are read on the app thread, the walk
+   * runs off it, and a request that arrives while one is still running replaces it rather than
+   * queueing a second one behind it.
+   */
+  private fun refreshQueueState() {
+    val timeline = player.currentTimeline
+    val mediaItemIndex = player.currentMediaItemIndex
+    val shuffle = player.shuffleModeEnabled
+    val generation = ++queueStateGeneration
+    queueStateJob?.cancel()
+    queueStateJob =
+      scope.launch(Dispatchers.Default) {
+        val windows = timeline.getQueueWindows(mediaItemIndex, shuffle)
+        val index = timeline.getCurrentQueueIndex(mediaItemIndex, shuffle)
+        // A newer request has been made, so this answer is already out of date.
+        if (generation != queueStateGeneration) return@launch
+        queueWindows.value = windows
+        currentWindowIndex.value = index
+      }
   }
 
   private fun updateCanSkipPreviousAndNext() {

@@ -28,72 +28,69 @@ fun Player.toggleRepeatMode() {
     }
 }
 
-fun Player.getQueueWindows(): List<Timeline.Window> {
-  val timeline = currentTimeline
-  if (timeline.isEmpty) {
-    return emptyList()
-  }
-  val currentMediaItemIndex: Int = currentMediaItemIndex
-  if (
-    currentMediaItemIndex == C.INDEX_UNSET ||
-      currentMediaItemIndex < 0 ||
-      currentMediaItemIndex >= timeline.windowCount
-  ) {
-    return emptyList()
-  }
+fun Player.getQueueWindows(): List<Timeline.Window> =
+  currentTimeline.getQueueWindows(currentMediaItemIndex, shuffleModeEnabled)
+
+fun Player.getCurrentQueueIndex(): Int =
+  currentTimeline.getCurrentQueueIndex(currentMediaItemIndex, shuffleModeEnabled)
+
+/**
+ * The queue in playback order, laid out around [fromIndex].
+ *
+ * It takes a [Timeline] and the two indexes instead of reading them off a player so the caller can
+ * do the walk away from the app thread. Walking a long queue steps through both directions and
+ * allocates a window for every item in it, which on a few thousand songs is the entire cost of
+ * turning shuffle on.
+ */
+fun Timeline.getQueueWindows(
+  fromIndex: Int,
+  shuffleModeEnabled: Boolean,
+): List<Timeline.Window> {
+  if (isEmpty) return emptyList()
+  if (fromIndex == C.INDEX_UNSET || fromIndex < 0 || fromIndex >= windowCount) return emptyList()
 
   val queue = ArrayDeque<Timeline.Window>()
-  val queueSize = timeline.windowCount
+  val queueSize = windowCount
 
-  queue.add(timeline.getWindow(currentMediaItemIndex, Timeline.Window()))
+  queue.add(getWindow(fromIndex, Timeline.Window()))
 
-  var firstMediaItemIndex = currentMediaItemIndex
-  var lastMediaItemIndex = currentMediaItemIndex
-  val shuffleModeEnabled = shuffleModeEnabled
+  var firstMediaItemIndex = fromIndex
+  var lastMediaItemIndex = fromIndex
   while (
     (firstMediaItemIndex != C.INDEX_UNSET || lastMediaItemIndex != C.INDEX_UNSET) &&
       queue.size < queueSize
   ) {
     if (lastMediaItemIndex != C.INDEX_UNSET) {
       lastMediaItemIndex =
-        timeline.getNextWindowIndex(lastMediaItemIndex, REPEAT_MODE_OFF, shuffleModeEnabled)
+        getNextWindowIndex(lastMediaItemIndex, REPEAT_MODE_OFF, shuffleModeEnabled)
       if (lastMediaItemIndex != C.INDEX_UNSET) {
-        queue.add(timeline.getWindow(lastMediaItemIndex, Timeline.Window()))
+        queue.add(getWindow(lastMediaItemIndex, Timeline.Window()))
       }
     }
     if (firstMediaItemIndex != C.INDEX_UNSET && queue.size < queueSize) {
       firstMediaItemIndex =
-        timeline.getPreviousWindowIndex(firstMediaItemIndex, REPEAT_MODE_OFF, shuffleModeEnabled)
+        getPreviousWindowIndex(firstMediaItemIndex, REPEAT_MODE_OFF, shuffleModeEnabled)
       if (firstMediaItemIndex != C.INDEX_UNSET) {
-        queue.addFirst(timeline.getWindow(firstMediaItemIndex, Timeline.Window()))
+        queue.addFirst(getWindow(firstMediaItemIndex, Timeline.Window()))
       }
     }
   }
   return queue.toList()
 }
 
-fun Player.getCurrentQueueIndex(): Int {
-  if (currentTimeline.isEmpty) {
-    return -1
-  }
-  var currentMediaItemIndex = currentMediaItemIndex
-  if (
-    currentMediaItemIndex == C.INDEX_UNSET ||
-      currentMediaItemIndex < 0 ||
-      currentMediaItemIndex >= currentTimeline.windowCount
-  ) {
-    return -1
-  }
+/** How many items of the current playback order come before [fromIndex]. */
+fun Timeline.getCurrentQueueIndex(
+  fromIndex: Int,
+  shuffleModeEnabled: Boolean,
+): Int {
+  if (isEmpty) return -1
+  if (fromIndex == C.INDEX_UNSET || fromIndex < 0 || fromIndex >= windowCount) return -1
 
   var index = 0
-  while (currentMediaItemIndex != C.INDEX_UNSET) {
-    currentMediaItemIndex =
-      currentTimeline.getPreviousWindowIndex(
-        currentMediaItemIndex,
-        REPEAT_MODE_OFF,
-        shuffleModeEnabled
-      )
-    if (currentMediaItemIndex != C.INDEX_UNSET) {
+  var cursor = fromIndex
+  while (cursor != C.INDEX_UNSET) {
+    cursor = getPreviousWindowIndex(cursor, REPEAT_MODE_OFF, shuffleModeEnabled)
+    if (cursor != C.INDEX_UNSET) {
       index++
     }
   }
