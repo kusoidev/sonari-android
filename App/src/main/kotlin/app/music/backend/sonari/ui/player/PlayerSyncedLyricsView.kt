@@ -2,6 +2,7 @@ package app.music.backend.sonari.ui.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -118,9 +119,21 @@ fun PlayerSyncedLyricsView(
       AnimatedContent(
         targetState = currentLine,
         transitionSpec = {
-          (fadeIn() + slideInVertically { height -> height })
-            .togetherWith(fadeOut() + slideOutVertically { height -> -height })
-            .using(SizeTransform(clip = false))
+          // One line at a time. Both halves used to run together, so for a moment the line leaving
+          // and the line arriving were drawn over each other, sliding through the controls: that is
+          // the blink you catch when a line turns over. The old line now clears before the new one
+          // starts to rise, and the pair is clipped to its own row so neither spills outside it.
+          (
+              fadeIn(animationSpec = tween(durationMillis = 170, delayMillis = 80)) +
+                slideInVertically(
+                  animationSpec = tween(durationMillis = 220, delayMillis = 60)
+                ) { height -> height }
+            )
+            .togetherWith(
+              fadeOut(animationSpec = tween(durationMillis = 80)) +
+                slideOutVertically(animationSpec = tween(durationMillis = 140)) { height -> -height }
+            )
+            .using(SizeTransform(clip = true))
         },
         label = "SyncedLyrics"
       ) { lineText ->

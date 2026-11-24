@@ -1,6 +1,5 @@
 package app.music.backend.sonari.ui.component
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -17,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -167,19 +165,11 @@ fun sonariLyricsLine(
 
   // Waiting lines sit a touch below their place and are pulled up into it, the sung one with a
   // small overshoot that settles - a fast-moving thing easing to a stop rather than stopping.
-  // Arriving as the sung line is a wave of its own: the row does not switch into "main", the light
-  // runs through its words, first one leading and the rest following, and the row settles behind
-  // it. `leadSpan` is how much of the arrival each next word waits for.
-  val arrival = remember { Animatable(1f) }
-  LaunchedEffect(isActive) {
-    if (isActive) {
-      arrival.snapTo(0f)
-      arrival.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow))
-    } else {
-      arrival.snapTo(1f)
-    }
-  }
-
+  //
+  // There used to be an arrival wave on top of this that was snapped back to zero the moment a line
+  // became the sung one. For the frame it took the spring to recover, the words dropped a few pixels
+  // and their unsung half dimmed by half, which read as the line blinking as it turned over. The
+  // line now only ever brightens into place, word by word, with nothing reset underneath it.
   val lineRise by
     animateFloatAsState(
       targetValue = if (isActive) 1f else 0f,
@@ -285,14 +275,10 @@ fun sonariLyricsLine(
             label = "wordRise"
           )
 
-        // How far this word has been reached by the line's arrival wave: 1 once it is settled, less
-        // while it is still waiting its turn behind the words before it.
-        val lead =
-          (arrival.value * (1f + wordData.size * 0.12f) - index * 0.12f).coerceIn(0f, 1f)
-
-        // The word's own brightness to come, which the wave brings up in order rather than the whole
-        // row going bright at the instant the line becomes the sung one.
-        val dim = 0.45f * (0.5f + 0.5f * lead)
+        // How far the sweep has carried through this word, which is all that sets its brightness:
+        // one steady value for the part of the line still to be sung, so a line turning over cannot
+        // change it and blink.
+        val dim = 0.45f
 
         // One weight for every word, pass and pending: a heavier active word re-measured the row
         // under the sweep and nudged every word after it sideways.
@@ -308,8 +294,7 @@ fun sonariLyricsLine(
                 if (progress > 0f && progress < 1f) {
                   kotlin.math.sin(progress * kotlin.math.PI.toFloat()) * 0.045f
                 } else 0f
-              translationY =
-                (1f - rise) * waitDropPx - swell * waitDropPx + (1f - lead) * waitDropPx
+              translationY = (1f - rise) * waitDropPx - swell * waitDropPx
               scaleX = 1f + swell
               scaleY = 1f + swell
             },
