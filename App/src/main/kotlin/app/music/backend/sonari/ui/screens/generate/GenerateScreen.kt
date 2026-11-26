@@ -204,17 +204,17 @@ fun GenerateScreen(
                 color = MaterialTheme.colorScheme.onSurface,
               )
               Text(
-                text = "• Uses total listened time, completion ratios, and skip penalties",
+                text = "• Reads every song you played, liked and downloaded, weighted by listened time, skips and recency",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
               Text(
-                text = "• Weights recent tracks and adapts to the current time of day",
+                text = "• Asks for the artist, what sounds like it, the radio, and Spotify or SoundCloud if they are on",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
               Text(
-                text = "• Expands seeds via related track graph with strict deduplication",
+                text = "• Leaves out anything you already played, then says why each song made the mix",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
