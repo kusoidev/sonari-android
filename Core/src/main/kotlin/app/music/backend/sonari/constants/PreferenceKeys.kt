@@ -245,6 +245,8 @@ val LastFMUseSendLikes = booleanPreferencesKey("lastfmUseSendLikes")
 
 val SoundCloudClientIdKey = stringPreferencesKey("soundcloudClientId")
 
+val AutoDownloadPlaylistsKey = booleanPreferencesKey("autoDownloadPlaylists")
+
 val ScrobbleDelayPercentKey = floatPreferencesKey("scrobbleDelayPercent")
 val ScrobbleMinSongDurationKey = intPreferencesKey("scrobbleMinSongDuration")
 val ScrobbleDelaySecondsKey = intPreferencesKey("scrobbleDelaySeconds")

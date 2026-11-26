@@ -75,7 +75,7 @@ import app.music.backend.sonari.playback.ExoDownloadService
 import app.music.backend.sonari.playback.isProviderMediaId
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.playback.queues.YouTubeQueue
-import app.music.backend.sonari.ui.component.TasteSuggestionCard
+import app.music.backend.sonari.ui.component.ForYouCard
 import app.music.backend.sonari.viewmodels.LibraryMixViewModel
 import app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel
 import kotlinx.coroutines.delay
@@ -110,10 +110,9 @@ fun LibraryHomeScreen(
   val listState = rememberLazyListState()
   val haptic = LocalHapticFeedback.current
 
-  val tasteSuggestions by tasteViewModel.suggestions.collectAsState()
+  val tasteMix by tasteViewModel.mix.collectAsState()
   val tasteSaving by tasteViewModel.saving.collectAsState()
-  val savedForYouPlaylistId by tasteViewModel.savedPlaylistId.collectAsState()
-  val context = LocalContext.current
+  val tasteKept by tasteViewModel.kept.collectAsState()
 
   val current = mediaMetadata
   val hero =
@@ -255,98 +254,18 @@ fun LibraryHomeScreen(
       }
     }
 
-    if (tasteSuggestions.isNotEmpty()) {
-      item(key = "for_you_actions") {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-        ) {
-          Text(
-            text = "For you",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-          )
+    tasteMix?.let { mix ->
+      item(key = "for_you_header") { SectionHeader(title = "For you") }
 
-          if (savedForYouPlaylistId != null) {
-            OutlinedButton(
-              onClick = { navController.navigate("local_playlist/$savedForYouPlaylistId") }
-            ) {
-              Text("Open")
-            }
-          } else {
-            OutlinedButton(onClick = { tasteViewModel.saveAsPlaylist() }, enabled = !tasteSaving) {
-              Text(if (tasteSaving) "Saving" else "Save")
-            }
-          }
-
-          Spacer(Modifier.width(8.dp))
-
-          OutlinedButton(
-            onClick = {
-              val songs = tasteSuggestions.filter { it.song.id.length == 11 }
-              if (songs.isEmpty()) return@OutlinedButton
-              songs.forEach { suggestion ->
-                val id = suggestion.song.id
-                val request =
-                  DownloadRequest.Builder(id, id.toUri())
-                    .setCustomCacheKey(id)
-                    .setData(suggestion.song.title.toByteArray())
-                    .build()
-                DownloadService.sendAddDownload(
-                  context,
-                  ExoDownloadService::class.java,
-                  request,
-                  false
-                )
-              }
-              Toast.makeText(
-                context,
-                "Downloading ${songs.size} songs",
-                Toast.LENGTH_SHORT
-              ).show()
-            }
-          ) {
-            Text("Download")
-          }
-        }
-      }
-
-      item(key = "for_you_row") {
-        LazyRow(
-          contentPadding = PaddingValues(horizontal = 20.dp),
-          horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-          items(
-            items = tasteSuggestions,
-            key = { "suggest_${it.song.id}" },
-          ) { suggestion ->
-            TasteSuggestionCard(
-              suggestion = suggestion,
-              onClick = {
-                val connection = playerConnection ?: return@TasteSuggestionCard
-                val song = suggestion.song
-                if (song.id.isProviderMediaId()) {
-                  connection.playQueue(
-                    ListQueue(
-                      title = song.title,
-                      items = listOf(song.toMediaItem()),
-                      startIndex = 0,
-                    )
-                  )
-                } else {
-                  connection.playQueue(
-                    YouTubeQueue(
-                      song.endpoint ?: WatchEndpoint(videoId = song.id),
-                      song.toMediaMetadata(),
-                    )
-                  )
-                }
-              },
-            )
-          }
-        }
+      item(key = "for_you_card") {
+        ForYouCard(
+          coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
+          songCount = mix.suggestions.size,
+          kept = tasteKept,
+          saving = tasteSaving,
+          onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
+          onSave = { tasteViewModel.save() },
+        )
       }
     }
 

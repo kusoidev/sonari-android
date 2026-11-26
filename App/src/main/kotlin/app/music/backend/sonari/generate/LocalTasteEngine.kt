@@ -31,6 +31,10 @@ internal const val TIME_OF_DAY_BONUS = 1.3f
 
 private const val YOUTUBE_ID_LENGTH = 11
 
+/** The playlist the suggestions live in, built on its own and kept only when the user saves it. */
+const val ForYouPlaylistId = "local_for_you"
+const val ForYouPlaylistName = "For you"
+
 private val MORNING = 6..11
 private val AFTERNOON = 12..17
 private val EVENING = 18..21
@@ -139,22 +143,26 @@ open class LocalTasteEngine @Inject constructor(
       }
     }
 
-  /**
-   * Saves suggestions as a playlist the user keeps, under the same name generation uses, so saving
-   * twice refreshes that one playlist instead of piling up copies.
-   */
-  open suspend fun save(suggestions: List<TasteSuggestion>): String? =
+  /** The mix, saved as the playlist the suggestions live in, ready to open. */
+  open suspend fun build(count: Int = MAX_SUGGESTIONS): TasteMix? =
     withContext(Dispatchers.IO) {
-      if (suggestions.isEmpty() || database == null) return@withContext null
-      val timeOfDay = currentTimeOfDay()
-      val playlistId = "local_taste_$timeOfDay"
-      persistPlaylist(
-        playlistId,
-        "For you (${timeOfDay.replaceFirstChar { it.uppercase() }})",
-        suggestions.map { it.song },
-      )
-      playlistId
+      if (database == null) return@withContext null
+      val suggestions = suggest(count)
+      if (suggestions.isEmpty()) return@withContext null
+      persistPlaylist(ForYouPlaylistId, ForYouPlaylistName, suggestions.map { it.song })
+      TasteMix(ForYouPlaylistId, ForYouPlaylistName, suggestions)
     }
+
+  /** Keeps the built playlist in the playlists list; before this it only exists on its own. */
+  open suspend fun keep(): Boolean = withContext(Dispatchers.IO) {
+    val db = database ?: return@withContext false
+    val playlist = runCatching { db.playlist(ForYouPlaylistId).firstOrNull() }.getOrNull()
+      ?: return@withContext false
+    db.withTransaction {
+      update(playlist.playlist.copy(bookmarkedAt = java.time.LocalDateTime.now()))
+    }
+    true
+  }
 
   /**
    * The mix without saving a playlist: what the home row and the library show as soon as the app
@@ -184,8 +192,16 @@ open class LocalTasteEngine @Inject constructor(
     exclusions: Set<String>,
     count: Int,
   ): List<TasteSuggestion> {
-    val knownKeys = runCatching { songPlayStatsDao.getAllTrackKeys().toSet() }
-      .getOrDefault(emptySet())
+    // Anything already played or kept (downloaded, liked, in the library) is not a suggestion.
+    val knownKeys = mutableSetOf<String>()
+    knownKeys += runCatching { songPlayStatsDao.getAllTrackKeys() }.getOrDefault(emptyList())
+    runCatching { database?.allSongs()?.firstOrNull().orEmpty() }
+      .getOrDefault(emptyList())
+      .forEach { song -> knownKeys += trackKeyOf(song.song.title, artistLineOf(song)) }
+    runCatching { database?.downloadedSongsByCreateDateAsc()?.firstOrNull().orEmpty() }
+      .getOrDefault(emptyList())
+      .forEach { song -> knownKeys += trackKeyOf(song.song.title, artistLineOf(song)) }
+
     val raw = collectSuggestions(eligibleSeeds, exclusions, count)
     val adjusted = runCatching { adjustScores(raw) }.getOrDefault(raw)
     return assembleTasteMix(adjusted, knownKeys, count)
@@ -312,7 +328,7 @@ open class LocalTasteEngine @Inject constructor(
           id = playlistId,
           name = playlistName,
           browseId = null,
-          bookmarkedAt = java.time.LocalDateTime.now(),
+          bookmarkedAt = null,
           isLocal = true,
           isEditable = true
         )

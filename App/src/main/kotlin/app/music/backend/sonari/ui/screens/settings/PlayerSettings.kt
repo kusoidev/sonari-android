@@ -177,6 +177,12 @@ fun PlayerSettings(
     rememberPreference(DownloadOnPlayKey, defaultValue = true)
   val (downloadOnWifiOnly, onDownloadOnWifiOnlyChange) =
     rememberPreference(DownloadOnWifiOnlyKey, defaultValue = false)
+  val (autoDownloadPlaylists, onAutoDownloadPlaylistsChange) =
+    rememberPreference(
+      app.music.backend.sonari.constants.AutoDownloadPlaylistsKey,
+      defaultValue = true
+    )
+
   val (downloadWithMetadata, onDownloadWithMetadataChange) =
     rememberPreference(DownloadWithMetadataKey, defaultValue = true)
   val (similarContentEnabled, similarContentEnabledChange) =
@@ -509,6 +515,32 @@ fun PlayerSettings(
                 )
               },
               onClick = { onDownloadWithMetadataChange(!downloadWithMetadata) }
+            )
+          )
+
+          add(
+            Material3SettingsItem(
+              isHighlighted = (highlightKey == "Download playlists automatically"),
+              icon = painterResource(R.drawable.download),
+              title = { Text("Download playlists automatically") },
+              description = { Text("Saves the For you playlist offline as soon as it is built") },
+              trailingContent = {
+                Switch(
+                  checked = autoDownloadPlaylists,
+                  onCheckedChange = onAutoDownloadPlaylistsChange,
+                  thumbContent = {
+                    Icon(
+                      painter =
+                        painterResource(
+                          id = if (autoDownloadPlaylists) R.drawable.check else R.drawable.close
+                        ),
+                      contentDescription = null,
+                      modifier = Modifier.size(SwitchDefaults.IconSize),
+                    )
+                  }
+                )
+              },
+              onClick = { onAutoDownloadPlaylistsChange(!autoDownloadPlaylists) }
             )
           )
 

@@ -37,7 +37,7 @@ fun LocalPlaylistMenu(
   val listenTogetherManager = LocalListenTogetherManager.current
   val isGuest = listenTogetherManager?.isGuestPlaybackRestricted == true
 
-  val downloadMenuItem =
+  val downloadMenuItem: Material3MenuItemData? =
     when (downloadState) {
       Download.STATE_COMPLETED ->
         Material3MenuItemData(
@@ -60,18 +60,7 @@ fun LocalPlaylistMenu(
             onDismiss()
           }
         )
-      else ->
-        Material3MenuItemData(
-          title = { Text(stringResource(R.string.action_download)) },
-          description = { Text(stringResource(R.string.download_playlist_desc)) },
-          icon = {
-            Icon(painter = painterResource(R.drawable.download), contentDescription = null)
-          },
-          onClick = {
-            onDownload()
-            onDismiss()
-          }
-        )
+      else -> null
     }
 
   val isYouTubePlaylist = playlist.playlist.browseId != null
@@ -88,25 +77,6 @@ fun LocalPlaylistMenu(
         }
       )
     )
-
-    if (playlist.playlist.isEditable) {
-      add(
-        Material3MenuItemData(
-          title = { Text(stringResource(R.string.modify_with_ai)) },
-          description = { Text(stringResource(R.string.modify_with_ai_desc)) },
-          icon = {
-            Icon(
-              painter = painterResource(R.drawable.edit), // Or another icon
-              contentDescription = null
-            )
-          },
-          onClick = {
-            onModifyWithAi()
-            onDismiss()
-          }
-        )
-      )
-    }
 
     add(
       Material3MenuItemData(
@@ -152,7 +122,7 @@ fun LocalPlaylistMenu(
       )
     }
 
-    add(downloadMenuItem)
+    downloadMenuItem?.let(::add)
 
     add(
       Material3MenuItemData(
@@ -180,7 +150,7 @@ fun AutoPlaylistMenu(
   val listenTogetherManager = LocalListenTogetherManager.current
   val isGuest = listenTogetherManager?.isGuestPlaybackRestricted == true
 
-  val downloadMenuItem =
+  val downloadMenuItem: Material3MenuItemData? =
     when (downloadState) {
       Download.STATE_COMPLETED ->
         Material3MenuItemData(
@@ -203,18 +173,7 @@ fun AutoPlaylistMenu(
             onDismiss()
           }
         )
-      else ->
-        Material3MenuItemData(
-          title = { Text(stringResource(R.string.action_download)) },
-          description = { Text(stringResource(R.string.download_playlist_desc)) },
-          icon = {
-            Icon(painter = painterResource(R.drawable.download), contentDescription = null)
-          },
-          onClick = {
-            onDownload()
-            onDismiss()
-          }
-        )
+      else -> null
     }
 
   Material3MenuGroup(
@@ -248,7 +207,7 @@ fun TopPlaylistMenu(
   val listenTogetherManager = LocalListenTogetherManager.current
   val isGuest = listenTogetherManager?.isGuestPlaybackRestricted == true
 
-  val downloadMenuItem =
+  val downloadMenuItem: Material3MenuItemData? =
     when (downloadState) {
       Download.STATE_COMPLETED ->
         Material3MenuItemData(
@@ -271,18 +230,7 @@ fun TopPlaylistMenu(
             onDismiss()
           }
         )
-      else ->
-        Material3MenuItemData(
-          title = { Text(stringResource(R.string.action_download)) },
-          description = { Text(stringResource(R.string.download_playlist_desc)) },
-          icon = {
-            Icon(painter = painterResource(R.drawable.download), contentDescription = null)
-          },
-          onClick = {
-            onDownload()
-            onDismiss()
-          }
-        )
+      else -> null
     }
 
   Material3MenuGroup(
@@ -316,7 +264,7 @@ fun CachePlaylistMenu(
   val listenTogetherManager = LocalListenTogetherManager.current
   val isGuest = listenTogetherManager?.isGuestPlaybackRestricted == true
 
-  val downloadMenuItem =
+  val downloadMenuItem: Material3MenuItemData? =
     when (downloadState) {
       Download.STATE_COMPLETED ->
         Material3MenuItemData(
@@ -339,18 +287,7 @@ fun CachePlaylistMenu(
             onDismiss()
           }
         )
-      else ->
-        Material3MenuItemData(
-          title = { Text(stringResource(R.string.action_download)) },
-          description = { Text(stringResource(R.string.download_playlist_desc)) },
-          icon = {
-            Icon(painter = painterResource(R.drawable.download), contentDescription = null)
-          },
-          onClick = {
-            onDownload()
-            onDismiss()
-          }
-        )
+      else -> null
     }
 
   Material3MenuGroup(

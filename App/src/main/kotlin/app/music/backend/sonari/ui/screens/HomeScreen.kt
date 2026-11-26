@@ -161,7 +161,7 @@ import app.music.backend.sonari.utils.rememberPreference
 import app.music.backend.sonari.viewmodels.CommunityPlaylistItem
 import app.music.backend.sonari.viewmodels.DailyDiscoverItem
 import app.music.backend.sonari.extensions.toMediaItem
-import app.music.backend.sonari.ui.component.TasteSuggestionCard
+import app.music.backend.sonari.ui.component.ForYouCard
 import app.music.backend.sonari.viewmodels.HomeViewModel
 import app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel
 import app.music.backend.sonari.viewmodels.PodcastsViewModel
@@ -595,7 +595,9 @@ fun HomeScreen(
 
   val allLocalItems by viewModel.allLocalItems.collectAsState()
   val allYtItems by viewModel.allYtItems.collectAsState()
-  val tasteSuggestions by tasteViewModel.suggestions.collectAsState()
+  val tasteMix by tasteViewModel.mix.collectAsState()
+  val tasteSaving by tasteViewModel.saving.collectAsState()
+  val tasteKept by tasteViewModel.kept.collectAsState()
   val speedDialItems by viewModel.speedDialItems.collectAsState()
   val selectedChip by viewModel.selectedChip.collectAsState()
 
@@ -818,7 +820,7 @@ fun HomeScreen(
       similarRecommendations,
       homePage?.sections,
       explorePage?.moodAndGenres,
-      tasteSuggestions,
+      tasteMix,
       aiRecommendedPlaylist,
       isPodcastPage,
       selectedChip
@@ -841,7 +843,7 @@ fun HomeScreen(
       }
 
       if (showSpeedDial && speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
-      if (tasteSuggestions.isNotEmpty()) list.add(HomeSection.TasteMix)
+      if (tasteMix != null) list.add(HomeSection.TasteMix)
       if (aiRecommendedPlaylist != null && aiRecommendedPlaylist!!.second.isNotEmpty())
         list.add(HomeSection.AiRecommendations)
       if (heroSongs.isNotEmpty() && selectedChip == null) list.add(HomeSection.HeroCarousel)
@@ -1660,55 +1662,26 @@ fun HomeScreen(
                 }
             }
             is HomeSection.TasteMix -> {
-              item(key = "taste_mix_title") {
-                NavigationTitle(
-                  title = "For you",
-                  label = "from what you play",
-                  modifier = Modifier.animateItem()
-                )
-              }
+              val mix = tasteMix
+              if (mix != null) {
+                item(key = "taste_mix_title") {
+                  NavigationTitle(
+                    title = "For you",
+                    label = "from what you play",
+                    modifier = Modifier.animateItem()
+                  )
+                }
 
-              item(key = "taste_mix_list") {
-                LazyRow(
-                  contentPadding =
-                    WindowInsets.systemBars.only(WindowInsetsSides.Horizontal).asPaddingValues(),
-                  horizontalArrangement = Arrangement.spacedBy(12.dp),
-                  modifier = Modifier.animateItem()
-                ) {
-                  items(tasteSuggestions, key = { it.song.id + it.reason }) { suggestion ->
-                    TasteSuggestionCard(
-                      suggestion = suggestion,
-                      onClick = {
-                        val song = suggestion.song
-                        if (song.id.isProviderMediaId()) {
-                          playerConnection.playQueue(
-                            ListQueue(
-                              title = song.title,
-                              items = listOf(song.toMediaItem()),
-                              startIndex = 0
-                            )
-                          )
-                        } else {
-                          playerConnection.playQueue(
-                            YouTubeQueue(
-                              song.endpoint ?: WatchEndpoint(videoId = song.id),
-                              song.toMediaMetadata()
-                            )
-                          )
-                        }
-                      },
-                      onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menuState.show {
-                          YouTubeSongMenu(
-                            song = suggestion.song,
-                            navController = navController,
-                            onDismiss = menuState::dismiss
-                          )
-                        }
-                      }
-                    )
-                  }
+                item(key = "taste_mix_card") {
+                  ForYouCard(
+                    coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
+                    songCount = mix.suggestions.size,
+                    kept = tasteKept,
+                    saving = tasteSaving,
+                    onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
+                    onSave = { tasteViewModel.save() },
+                    modifier = Modifier.animateItem()
+                  )
                 }
               }
             }
