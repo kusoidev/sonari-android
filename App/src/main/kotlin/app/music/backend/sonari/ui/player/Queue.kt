@@ -103,7 +103,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalClipboard
@@ -354,10 +353,6 @@ fun Queue(
           val middleShape = CircleShape
           val repeatShape = CircleShape
 
-          // Where each button is drawn, so the line it causes can grow out of it.
-          var shuffleBounds by remember { mutableStateOf(Rect.Zero) }
-          var repeatBounds by remember { mutableStateOf(Rect.Zero) }
-
           PlayerQueueButton(
             icon = R.drawable.bedtime,
             onClick = {
@@ -416,16 +411,12 @@ fun Queue(
               ActionBanner.show(
                 text = if (enabled) "Shuffled the queue" else "Shuffle off",
                 iconRes = R.drawable.shuffle,
-                anchor = shuffleBounds.takeIf { it.width > 0f },
-                sourceColor =
-                  if (enabled) textButtonColor else textButtonColor.copy(alpha = 0.14f),
               )
             },
             isActive = shuffleModeEnabledInside,
             enabled = !isListenTogetherGuest,
             shape = middleShape,
-            modifier =
-              Modifier.size(buttonSize).onGloballyPositioned { shuffleBounds = it.boundsInRoot() },
+            modifier = Modifier.size(buttonSize),
             textButtonColor = textButtonColor,
             iconButtonColor = iconButtonColor,
             iconSize = iconSize,
@@ -455,17 +446,12 @@ fun Queue(
                     Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
                     else -> R.drawable.repeat
                   },
-                anchor = repeatBounds.takeIf { it.width > 0f },
-                sourceColor =
-                  if (mode != Player.REPEAT_MODE_OFF) textButtonColor
-                  else textButtonColor.copy(alpha = 0.14f),
               )
             },
             isActive = repeatMode != Player.REPEAT_MODE_OFF,
             enabled = !isListenTogetherGuest,
             shape = repeatShape,
-            modifier =
-              Modifier.size(buttonSize).onGloballyPositioned { repeatBounds = it.boundsInRoot() },
+            modifier = Modifier.size(buttonSize),
             textButtonColor = textButtonColor,
             iconButtonColor = iconButtonColor,
             iconSize = iconSize,
