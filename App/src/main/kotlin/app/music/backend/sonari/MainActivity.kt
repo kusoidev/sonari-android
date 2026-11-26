@@ -1964,9 +1964,8 @@ class MainActivity : ComponentActivity() {
 
           // One short line about what the player just did, such as a queue being shuffled.
           ActionBannerHost(
-            modifier =
-              Modifier.align(Alignment.BottomCenter)
-                .padding(bottom = MiniPlayerHeight + 16.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxSize(),
+            bottomPadding = MiniPlayerHeight + 16.dp,
           )
 
           BottomSheetMenu(

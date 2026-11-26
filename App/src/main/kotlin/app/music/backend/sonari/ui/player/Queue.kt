@@ -417,6 +417,8 @@ fun Queue(
                 text = if (enabled) "Shuffled the queue" else "Shuffle off",
                 iconRes = R.drawable.shuffle,
                 anchor = shuffleBounds.takeIf { it.width > 0f },
+                sourceColor =
+                  if (enabled) textButtonColor else textButtonColor.copy(alpha = 0.14f),
               )
             },
             isActive = shuffleModeEnabledInside,
@@ -454,6 +456,9 @@ fun Queue(
                     else -> R.drawable.repeat
                   },
                 anchor = repeatBounds.takeIf { it.width > 0f },
+                sourceColor =
+                  if (mode != Player.REPEAT_MODE_OFF) textButtonColor
+                  else textButtonColor.copy(alpha = 0.14f),
               )
             },
             isActive = repeatMode != Player.REPEAT_MODE_OFF,

@@ -1,13 +1,15 @@
 package app.music.backend.sonari.ui.component
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,27 +30,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * One short line about what just happened, such as a queue being shuffled. [anchor] is where the
- * button that caused it is drawn, in root pixels: the line is not pushed in from off screen, it is
- * born out of that button.
- */
 data class BannerMessage(
   val id: Long,
   val text: String,
   val iconRes: Int? = null,
   val anchor: Rect? = null,
+  val sourceColor: Color? = null,
 )
 
 object ActionBanner {
@@ -57,9 +58,21 @@ object ActionBanner {
 
   private var counter = 0L
 
-  fun show(text: String, iconRes: Int? = null, anchor: Rect? = null) {
+  fun show(
+    text: String,
+    iconRes: Int? = null,
+    anchor: Rect? = null,
+    sourceColor: Color? = null,
+  ) {
     counter += 1
-    _message.value = BannerMessage(id = counter, text = text, iconRes = iconRes, anchor = anchor)
+    _message.value =
+      BannerMessage(
+        id = counter,
+        text = text,
+        iconRes = iconRes,
+        anchor = anchor,
+        sourceColor = sourceColor,
+      )
   }
 
   fun dismiss() {
@@ -67,80 +80,47 @@ object ActionBanner {
   }
 }
 
-/** How long one line lives, button to button. */
-private const val ShowMillis = 2000
+private const val ShowMillis = 2300
+private const val TravelMillis = 380f
+private const val ExitStart = ShowMillis - TravelMillis
 
-/** How fast an interrupted line is wound back into its button before the next one divides. */
-private const val RewindMillis = 170
+private const val SplitStart = 0.10f
+private const val SplitEnd = 0.39f
+private const val TravelStart = 0.28f
+private const val TravelEnd = 0.87f
+private const val RefillStart = 0.64f
+private const val RefillEnd = 0.82f
+private const val PillInStart = 0.78f
+private const val PillInEnd = 0.96f
+private const val TextInStart = 0.88f
 
-// One keyframed timeline, in fractions of ShowMillis. The beats never overlap in a way that fights:
-// the cell blooms on the button, splits there, flies as two clean cells, and only then does the
-// membrane refill into the capsule the pill fades in over. The exit is the same road backwards.
+private val RewindSpring =
+  spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+private val ButtonSpread = 1.15f
 
-/** The cell grows out of the button. */
-private const val BloomEnd = 0.03f
-
-/** Two cells separate on the button, the membrane between them pinching away. */
-private const val SplitStart = 0.03f
-private const val SplitEnd = 0.12f
-
-/** The two cells rise and part, out to the ends of the banner. */
-private const val FlyStart = 0.12f
-private const val FlyEnd = 0.32f
-
-/** The membrane refills between them: the capsule the banner is. */
-private const val SealStart = 0.32f
-private const val SealEnd = 0.45f
-
-/** The banner itself fades in over that capsule, and its words a moment after. */
-private const val PillInStart = 0.34f
-private const val PillInEnd = 0.46f
-private const val TextInStart = 0.40f
-private const val TextInEnd = 0.50f
-
-/** It reads itself out, then goes back the way it came. */
-private const val HoldEnd = 0.83f
-private const val PillOutEnd = 0.87f
-private const val UnsealStart = 0.835f
-private const val UnsealEnd = 0.905f
-private const val FlyBackStart = 0.87f
-private const val FlyBackEnd = 0.975f
-private const val ResealStart = 0.96f
-private const val FadeOutStart = 0.978f
-
-/** How far the two cells part while they are still sitting on the button. */
-private val ButtonSpread = 17.dp
-
-/**
- * The banner, grown out of the button that caused it.
- *
- * Pressing shuffle or loop does not slide a pill in: the button itself divides. A cell sitting
- * exactly on it blooms, pinches into two, and the pair rises to where the ends of the banner will
- * be; the membrane that refills between them is the capsule, and the pill fades in over it, so the
- * hand-over cannot be seen. Pressing again winds the whole thing back into the button and divides
- * it again with the new line.
- *
- * One number drives all of it, and it is only ever read from draw and layer lambdas, so no frame
- * of the animation recomposes the banner or lays the words out again.
- */
 @Composable
-fun ActionBannerHost(modifier: Modifier = Modifier) {
+fun ActionBannerHost(
+  modifier: Modifier = Modifier,
+  bottomPadding: Dp = 0.dp,
+) {
   val message by ActionBanner.message.collectAsState()
-  val phase = remember { Animatable(0f) }
+  val clock = remember { Animatable(0f) }
   var line by remember { mutableStateOf<BannerMessage?>(null) }
-  var pill by remember { mutableStateOf(Rect.Zero) }
+  var hostBounds by remember { mutableStateOf(Rect.Zero) }
+  var pillBounds by remember { mutableStateOf(Rect.Zero) }
 
   LaunchedEffect(message?.id) {
-    val next = message ?: return@LaunchedEffect
-    // A line still in flight is wound back into its own button first, so the next one can grow out
-    // of its button rather than tearing in over the top of the old one.
-    if (line != null && phase.value > 0.001f) {
-      // Only as long as there is something to unwind, so a fast tap-tap-tap stays responsive.
-      val unwind = (RewindMillis * phase.value).toInt().coerceIn(60, RewindMillis)
-      phase.animateTo(0f, tween(unwind, easing = FastOutSlowInEasing))
+    val next = message
+    if (line != null && clock.value > 0f) {
+      clock.animateTo(0f, RewindSpring)
     }
+    clock.snapTo(0f)
     line = next
-    phase.animateTo(1f, tween(ShowMillis, easing = LinearEasing))
+    if (next != null) {
+      clock.animateTo(ShowMillis.toFloat(), tween(ShowMillis, easing = LinearEasing))
+      line = null
+      ActionBanner.dismiss()
+    }
   }
 
   val shown = line ?: return
@@ -148,47 +128,60 @@ fun ActionBannerHost(modifier: Modifier = Modifier) {
   val contentColor = MaterialTheme.colorScheme.inverseOnSurface
   val iconColor = MaterialTheme.colorScheme.inversePrimary
 
-  Box(modifier = modifier) {
-    // The dividing cell. It is drawn from the button all the way up to the banner, which is outside
-    // this box, so it is never clipped to the banner's own rectangle.
-    Canvas(modifier = Modifier.matchParentSize()) {
-      val p = phase.value
-      val alpha = cellAt(p)
-      if (alpha <= 0.002f) return@Canvas
-
-      val capsule = pill
-      if (capsule.width <= 0f || capsule.height <= 0f) return@Canvas
-
-      val capsuleRadius = capsule.height / 2f
+  Box(
+    modifier = modifier.fillMaxSize().onGloballyPositioned { hostBounds = it.boundsInRoot() }
+  ) {
+    Canvas(
+      modifier =
+        Modifier.matchParentSize().graphicsLayer {
+          compositingStrategy = CompositingStrategy.Offscreen
+        }
+    ) {
       val anchor = shown.anchor
-      val buttonX = (anchor?.center?.x ?: capsule.center.x) - capsule.left
-      val buttonY = (anchor?.center?.y ?: capsule.center.y) - capsule.top
+      val t = clock.value
+      val motion = motionAt(t)
+      val pillAlpha = if (anchor == null) fallbackPillAt(t) else pillAt(motion)
+      val cellAlpha = if (anchor == null) 0f else 1f - pillAlpha
+      if (cellAlpha <= 0.002f) return@Canvas
+
+      val host = hostBounds
+      val pill = pillBounds
+      if (host.width <= 0f || host.height <= 0f || pill.width <= 0f || pill.height <= 0f) {
+        return@Canvas
+      }
+      val localPill =
+        Rect(
+          left = pill.left - host.left,
+          top = pill.top - host.top,
+          right = pill.right - host.left,
+          bottom = pill.bottom - host.top,
+        )
+      val pillRadius = localPill.height / 2f
+      val buttonX = (anchor?.center?.x ?: pill.center.x) - host.left
+      val buttonY = (anchor?.center?.y ?: pill.center.y) - host.top
       val buttonRadius =
         if (anchor != null && anchor.width > 0f && anchor.height > 0f) {
-          minOf(minOf(anchor.width, anchor.height) / 2f, capsuleRadius)
+          minOf(minOf(anchor.width, anchor.height) / 2f, pillRadius)
         } else {
-          capsuleRadius
+          pillRadius
         }
 
-      // Three clean steps: bloom on the button, part on the button, then fly as two whole cells.
-      val bloom = bloomAt(p)
-      val spread = ButtonSpread.toPx() * partAt(p)
-      val fly = flyAt(p)
-
-      val radius = buttonRadius * bloom + (capsuleRadius - buttonRadius * bloom) * fly
-      val fromLeft = buttonX - spread
-      val fromRight = buttonX + spread
-      val leftX = fromLeft + (capsuleRadius - fromLeft) * fly
-      val rightX = fromRight + (capsule.width - capsuleRadius - fromRight) * fly
-      val centerY = buttonY + (capsuleRadius - buttonY) * fly
+      val travel = if (anchor == null) 1f else travelAt(motion)
+      val spread = if (anchor == null) 0f else buttonRadius * ButtonSpread * splitAt(motion)
+      val radius = mix(buttonRadius, pillRadius, travel)
+      val leftX = mix(buttonX - spread, localPill.left + pillRadius, travel)
+      val rightX = mix(buttonX + spread, localPill.right - pillRadius, travel)
+      val centerY = mix(buttonY, localPill.center.y, travel)
+      val color = lerp(shown.sourceColor ?: pillColor, pillColor, travel)
 
       drawCell(
         leftX = leftX,
         rightX = rightX,
         centerY = centerY,
         radius = radius,
-        neck = neckAt(p),
-        color = pillColor.copy(alpha = pillColor.alpha * alpha),
+        neck = if (anchor == null) 1f else neckAt(motion),
+        color = color,
+        alpha = cellAlpha,
       )
     }
 
@@ -197,16 +190,25 @@ fun ActionBannerHost(modifier: Modifier = Modifier) {
       color = pillColor,
       contentColor = contentColor,
       shadowElevation = 3.dp,
-      // No tonal overlay: the capsule under the pill is drawn in exactly this colour, so the
-      // banner arriving over it must not tint.
       tonalElevation = 0.dp,
       modifier =
-        Modifier.onGloballyPositioned { pill = it.boundsInRoot() }
-          .graphicsLayer { alpha = pillAt(phase.value) },
+        Modifier.align(Alignment.BottomCenter)
+          .padding(bottom = bottomPadding)
+          .onGloballyPositioned { pillBounds = it.boundsInRoot() }
+          .graphicsLayer {
+            val t = clock.value
+            alpha = if (shown.anchor == null) fallbackPillAt(t) else pillAt(motionAt(t))
+          },
     ) {
       Row(
         modifier =
-          Modifier.graphicsLayer { alpha = textAt(phase.value) }
+          Modifier.graphicsLayer {
+              val t = clock.value
+              alpha = if (shown.anchor == null) fallbackPillAt(t) else textAt(motionAt(t))
+              val scale = 0.96f + 0.04f * textSettle(motionAt(t))
+              scaleX = scale
+              scaleY = scale
+            }
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
       ) {
@@ -226,71 +228,36 @@ fun ActionBannerHost(modifier: Modifier = Modifier) {
   }
 }
 
-/** 0 on the button, 1 out at the ends of the banner. */
-private fun flyAt(p: Float): Float = when {
-  p <= FlyStart -> 0f
-  p <= FlyEnd -> eased(FlyStart, FlyEnd, p)
-  p <= FlyBackStart -> 1f
-  else -> 1f - eased(FlyBackStart, FlyBackEnd, p)
+private fun motionAt(t: Float): Float {
+  val entering = smooth(0f, TravelMillis, t)
+  val leaving = 1f - smooth(ExitStart, ShowMillis.toFloat(), t)
+  return minOf(entering, leaving).coerceIn(0f, 1f)
 }
 
-/** How far the two cells have parted while they are still on the button: 0 together, 1 apart. */
-private fun partAt(p: Float): Float = when {
-  p <= SplitStart -> 0f
-  p <= SplitEnd -> eased(SplitStart, SplitEnd, p)
-  p <= FlyBackStart -> 1f
-  else -> 1f - eased(FlyBackStart, FlyBackEnd, p)
+private fun travelAt(motion: Float): Float = smooth(TravelStart, TravelEnd, motion)
+
+private fun splitAt(motion: Float): Float = smooth(SplitStart, SplitEnd, motion)
+
+private fun neckAt(motion: Float): Float =
+  (1f - smooth(SplitStart, SplitEnd, motion) + smooth(RefillStart, RefillEnd, motion))
+    .coerceIn(0f, 1f)
+
+private fun pillAt(motion: Float): Float = smooth(PillInStart, PillInEnd, motion)
+
+private fun textAt(motion: Float): Float = smooth(TextInStart, 1f, motion)
+
+private fun textSettle(motion: Float): Float = smooth(TextInStart, 1f, motion)
+
+private fun fallbackPillAt(t: Float): Float =
+  smooth(0f, 180f, t) * (1f - smooth(ShowMillis - 180f, ShowMillis.toFloat(), t))
+
+private fun mix(from: Float, to: Float, fraction: Float): Float = from + (to - from) * fraction
+
+private fun smooth(start: Float, end: Float, t: Float): Float {
+  val x = ((t - start) / (end - start)).coerceIn(0f, 1f)
+  return x * x * x * (x * (x * 6f - 15f) + 10f)
 }
 
-/** The cell growing out of the button's own circle. */
-private fun bloomAt(p: Float): Float = 0.52f + 0.48f * eased(0f, BloomEnd, p)
-
-/** How full the membrane is: 1 is one shape, 0 is two whole cells. */
-private fun neckAt(p: Float): Float = when {
-  p <= SplitStart -> 1f
-  p <= SplitEnd -> 1f - eased(SplitStart, SplitEnd, p)
-  p <= SealStart -> 0f
-  p <= SealEnd -> eased(SealStart, SealEnd, p)
-  p <= UnsealStart -> 1f
-  p <= UnsealEnd -> 1f - eased(UnsealStart, UnsealEnd, p)
-  else -> eased(ResealStart, 1f, p)
-}
-
-private fun cellAt(p: Float): Float = when {
-  p <= 0f -> 0f
-  p <= BloomEnd -> eased(0f, BloomEnd, p)
-  p <= FadeOutStart -> 1f
-  else -> 1f - eased(FadeOutStart, 1f, p)
-}
-
-private fun pillAt(p: Float): Float = when {
-  p <= PillInStart -> 0f
-  p <= PillInEnd -> eased(PillInStart, PillInEnd, p)
-  p <= HoldEnd -> 1f
-  p <= PillOutEnd -> 1f - eased(HoldEnd, PillOutEnd, p)
-  else -> 0f
-}
-
-private fun textAt(p: Float): Float = when {
-  p <= TextInStart -> 0f
-  p <= TextInEnd -> eased(TextInStart, TextInEnd, p)
-  p <= HoldEnd -> 1f
-  p <= PillOutEnd -> 1f - eased(HoldEnd, PillOutEnd, p)
-  else -> 0f
-}
-
-/** A smooth step from 0 at [edge0] to 1 at [edge1], flat at both ends. */
-private fun eased(edge0: Float, edge1: Float, value: Float): Float {
-  if (edge1 <= edge0) return if (value < edge1) 0f else 1f
-  val t = ((value - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
-  return t * t * (3f - 2f * t)
-}
-
-/**
- * A dividing cell: two circles of [radius] at [leftX] and [rightX], joined by a membrane that
- * pinches to [neck]. At 1 the membrane is as thick as the circles, which is a capsule; at 0 they
- * are two cells of their own. This is the same pinch the player's own buttons share.
- */
 private fun DrawScope.drawCell(
   leftX: Float,
   rightX: Float,
@@ -298,19 +265,19 @@ private fun DrawScope.drawCell(
   radius: Float,
   neck: Float,
   color: Color,
+  alpha: Float,
 ) {
   if (radius <= 0f) return
+  val drawColor = color.copy(alpha = color.alpha * alpha)
   if (rightX - leftX <= 0.5f) {
-    drawCircle(color, radius, Offset(leftX, centerY))
+    drawCircle(drawColor, radius, Offset(leftX, centerY))
     return
   }
 
   val neckRadius = radius * neck.coerceIn(0f, 1f)
   if (neckRadius <= 0.5f) {
-    // Two circles once the neck has gone: the pinched path would leave a hairline bridge between
-    // them, because of antialiasing at the cusp.
-    drawCircle(color, radius, Offset(leftX, centerY))
-    drawCircle(color, radius, Offset(rightX, centerY))
+    drawCircle(drawColor, radius, Offset(leftX, centerY))
+    drawCircle(drawColor, radius, Offset(rightX, centerY))
     return
   }
 
@@ -354,5 +321,5 @@ private fun DrawScope.drawCell(
   )
   membrane.arcTo(Rect(leftX - radius, top, leftX + radius, bottom), 90f, 180f, false)
   membrane.close()
-  drawPath(membrane, color)
+  drawPath(membrane, drawColor)
 }
