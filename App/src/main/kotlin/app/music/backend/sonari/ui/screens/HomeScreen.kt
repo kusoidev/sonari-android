@@ -125,6 +125,8 @@ import app.music.backend.sonari.db.entities.PlaylistSongMap
 import app.music.backend.sonari.db.entities.Song
 import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.models.toMediaMetadata
+import app.music.backend.sonari.generate.TasteSuggestion
+import app.music.backend.sonari.playback.isProviderMediaId
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.playback.queues.YouTubeQueue
 import app.music.backend.sonari.ui.component.AlbumGridItem
@@ -158,7 +160,10 @@ import app.music.backend.sonari.utils.rememberEnumPreference
 import app.music.backend.sonari.utils.rememberPreference
 import app.music.backend.sonari.viewmodels.CommunityPlaylistItem
 import app.music.backend.sonari.viewmodels.DailyDiscoverItem
+import app.music.backend.sonari.extensions.toMediaItem
+import app.music.backend.sonari.ui.component.TasteSuggestionCard
 import app.music.backend.sonari.viewmodels.HomeViewModel
+import app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel
 import app.music.backend.sonari.viewmodels.PodcastsViewModel
 import kotlin.math.min
 import kotlin.random.Random
@@ -176,6 +181,8 @@ private fun NavController.navigateToPlaylistItem(playlist: PlaylistItem) {
 
 sealed class HomeSection(val id: String, val baseWeight: Int) {
   data object SpeedDial : HomeSection("speed_dial", 100)
+
+  data object TasteMix : HomeSection("taste_mix", 97)
 
   data object AiRecommendations : HomeSection("ai_recommendations", 95)
 
@@ -563,6 +570,7 @@ fun HomeScreen(
   navController: NavController,
   snackbarHostState: SnackbarHostState,
   viewModel: HomeViewModel = hiltViewModel(),
+  tasteViewModel: TasteSuggestionsViewModel = hiltViewModel(),
 ) {
   val menuState = LocalMenuState.current
   val bottomSheetPageState = LocalBottomSheetPageState.current
@@ -587,6 +595,7 @@ fun HomeScreen(
 
   val allLocalItems by viewModel.allLocalItems.collectAsState()
   val allYtItems by viewModel.allYtItems.collectAsState()
+  val tasteSuggestions by tasteViewModel.suggestions.collectAsState()
   val speedDialItems by viewModel.speedDialItems.collectAsState()
   val selectedChip by viewModel.selectedChip.collectAsState()
 
@@ -809,6 +818,7 @@ fun HomeScreen(
       similarRecommendations,
       homePage?.sections,
       explorePage?.moodAndGenres,
+      tasteSuggestions,
       aiRecommendedPlaylist,
       isPodcastPage,
       selectedChip
@@ -831,6 +841,7 @@ fun HomeScreen(
       }
 
       if (showSpeedDial && speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
+      if (tasteSuggestions.isNotEmpty()) list.add(HomeSection.TasteMix)
       if (aiRecommendedPlaylist != null && aiRecommendedPlaylist!!.second.isNotEmpty())
         list.add(HomeSection.AiRecommendations)
       if (heroSongs.isNotEmpty() && selectedChip == null) list.add(HomeSection.HeroCarousel)
@@ -883,6 +894,7 @@ fun HomeScreen(
           mapOf(
             HomeSection.HeroCarousel to 1000,
             HomeSection.SpeedDial to 100,
+            HomeSection.TasteMix to 95,
             HomeSection.FromTheCommunity to 80,
             HomeSection.DailyDiscover to 70,
             HomeSection.KeepListening to 60,
@@ -1647,6 +1659,60 @@ fun HomeScreen(
                   }
                 }
             }
+            is HomeSection.TasteMix -> {
+              item(key = "taste_mix_title") {
+                NavigationTitle(
+                  title = "For you",
+                  label = "from what you play",
+                  modifier = Modifier.animateItem()
+                )
+              }
+
+              item(key = "taste_mix_list") {
+                LazyRow(
+                  contentPadding =
+                    WindowInsets.systemBars.only(WindowInsetsSides.Horizontal).asPaddingValues(),
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                  modifier = Modifier.animateItem()
+                ) {
+                  items(tasteSuggestions, key = { it.song.id + it.reason }) { suggestion ->
+                    TasteSuggestionCard(
+                      suggestion = suggestion,
+                      onClick = {
+                        val song = suggestion.song
+                        if (song.id.isProviderMediaId()) {
+                          playerConnection.playQueue(
+                            ListQueue(
+                              title = song.title,
+                              items = listOf(song.toMediaItem()),
+                              startIndex = 0
+                            )
+                          )
+                        } else {
+                          playerConnection.playQueue(
+                            YouTubeQueue(
+                              song.endpoint ?: WatchEndpoint(videoId = song.id),
+                              song.toMediaMetadata()
+                            )
+                          )
+                        }
+                      },
+                      onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                          YouTubeSongMenu(
+                            song = suggestion.song,
+                            navController = navController,
+                            onDismiss = menuState::dismiss
+                          )
+                        }
+                      }
+                    )
+                  }
+                }
+              }
+            }
+
             is HomeSection.SimilarRecommendation -> {
               val recommendation = similarRecommendations?.getOrNull(section.index)
               recommendation?.let {

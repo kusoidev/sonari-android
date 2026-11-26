@@ -112,12 +112,7 @@ open class LocalTasteEngine @Inject constructor(
           )
         }
 
-        val knownKeys = runCatching { songPlayStatsDao.getAllTrackKeys().toSet() }
-          .getOrDefault(emptySet())
-
-        val raw = collectSuggestions(eligibleSeeds, exclusions, count)
-        val adjusted = runCatching { adjustScores(raw) }.getOrDefault(raw)
-        val suggestions = assembleTasteMix(adjusted, knownKeys, count)
+        val suggestions = buildSuggestions(eligibleSeeds, exclusions, count)
         val finalSuggestions =
           if (suggestions.size >= 5) suggestions
           else topUpWithSeeds(suggestions, eligibleSeeds, count)
@@ -143,6 +138,41 @@ open class LocalTasteEngine @Inject constructor(
         Result.failure(e)
       }
     }
+
+  /**
+   * The mix without saving a playlist: what the home row and the mix screen show as soon as the app
+   * opens, so the suggestions are there before the user asks for them.
+   */
+  open suspend fun suggest(count: Int = MAX_SUGGESTIONS): List<TasteSuggestion> =
+    withContext(Dispatchers.IO) {
+      try {
+        val seeds = loadTasteSeeds()
+        if (seeds.isEmpty()) return@withContext emptyList()
+
+        val exclusions = recommendationExclusionDao.getAll().map { it.trackKey }.toSet()
+        val eligibleSeeds = seeds.filter { it.key !in exclusions }.take(8)
+        if (eligibleSeeds.isEmpty()) return@withContext emptyList()
+
+        buildSuggestions(eligibleSeeds, exclusions, count)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        Timber.e(e, "Taste mix suggestions failed")
+        emptyList()
+      }
+    }
+
+  private suspend fun buildSuggestions(
+    eligibleSeeds: List<TasteSeed>,
+    exclusions: Set<String>,
+    count: Int,
+  ): List<TasteSuggestion> {
+    val knownKeys = runCatching { songPlayStatsDao.getAllTrackKeys().toSet() }
+      .getOrDefault(emptySet())
+    val raw = collectSuggestions(eligibleSeeds, exclusions, count)
+    val adjusted = runCatching { adjustScores(raw) }.getOrDefault(raw)
+    return assembleTasteMix(adjusted, knownKeys, count)
+  }
 
   /** Everything the user played, liked or kept offline, best first. */
   protected suspend fun loadTasteSeeds(): List<TasteSeed> {
