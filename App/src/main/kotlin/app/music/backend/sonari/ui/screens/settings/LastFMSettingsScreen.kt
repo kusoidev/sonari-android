@@ -60,6 +60,7 @@ import app.music.backend.sonari.constants.LastFMUseSendLikes
 import app.music.backend.sonari.constants.LastFMUsernameKey
 import app.music.backend.sonari.constants.ScrobbleDelayPercentKey
 import app.music.backend.sonari.constants.ScrobbleDelaySecondsKey
+import app.music.backend.sonari.constants.SoundCloudClientIdKey
 import app.music.backend.sonari.constants.ScrobbleMinSongDurationKey
 import app.music.backend.sonari.ui.component.DefaultDialog
 import app.music.backend.sonari.ui.component.IconButton
@@ -81,6 +82,8 @@ fun LastFMSettingsScreen(navController: NavController) {
 
   var lastfmUsername by rememberPreference(LastFMUsernameKey, "")
   var lastfmSession by rememberPreference(LastFMSessionKey, "")
+  var soundCloudClientId by rememberPreference(SoundCloudClientIdKey, "")
+  var showSoundCloudDialog by rememberSaveable { mutableStateOf(false) }
 
   val isLoggedIn = remember(lastfmSession) { lastfmSession != "" }
 
@@ -114,6 +117,47 @@ fun LastFMSettingsScreen(navController: NavController) {
   var showLoginDialog by rememberSaveable { mutableStateOf(false) }
   var isLoggingIn by rememberSaveable { mutableStateOf(false) }
   var loginError by rememberSaveable { mutableStateOf<String?>(null) }
+
+  if (showSoundCloudDialog) {
+    var tempClientId by rememberSaveable { mutableStateOf(soundCloudClientId) }
+
+    AlertDialog(
+      onDismissRequest = { showSoundCloudDialog = false },
+      title = { Text("SoundCloud client ID") },
+      text = {
+        Column {
+          Text(
+            text =
+              "Sonari cannot play from SoundCloud, so its tracks only widen what the taste mix finds. " +
+                "Paste a client ID to switch it on, or clear the field to switch it off.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          Spacer(Modifier.height(12.dp))
+          OutlinedTextField(
+            value = tempClientId,
+            onValueChange = { tempClientId = it },
+            label = { Text("Client ID") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+          )
+        }
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            soundCloudClientId = tempClientId.trim()
+            showSoundCloudDialog = false
+          }
+        ) {
+          Text("Save")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showSoundCloudDialog = false }) { Text("Cancel") }
+      },
+    )
+  }
 
   if (showLoginDialog) {
     var tempUsername by rememberSaveable { mutableStateOf("") }
@@ -340,6 +384,30 @@ fun LastFMSettingsScreen(navController: NavController) {
       )
 
       Spacer(Modifier.height(8.dp))
+
+      Spacer(modifier = Modifier.height(16.dp))
+
+      Material3SettingsGroup(
+        title = "Taste sources",
+        items =
+          listOf(
+            Material3SettingsItem(
+              title = { Text("SoundCloud client ID") },
+              description = {
+                Text(
+                  if (soundCloudClientId.isBlank()) "Off: only YouTube Music, Last.fm and Spotify suggest"
+                  else "On: SoundCloud suggests too"
+                )
+              },
+              trailingContent = {
+                OutlinedButton(onClick = { showSoundCloudDialog = true }) {
+                  Text(if (soundCloudClientId.isBlank()) "Add" else "Change")
+                }
+              },
+              icon = painterResource(R.drawable.queue_music),
+            ),
+          ),
+      )
 
       Spacer(modifier = Modifier.height(16.dp))
 

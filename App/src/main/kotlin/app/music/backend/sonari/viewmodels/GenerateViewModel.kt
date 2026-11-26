@@ -8,6 +8,7 @@ import app.music.backend.sonari.db.daos.SongPlayStatsDao
 import app.music.backend.sonari.generate.GenerationState
 import app.music.backend.sonari.generate.GenerationStatus
 import app.music.backend.sonari.generate.LocalTasteEngine
+import app.music.backend.sonari.generate.TasteSuggestion
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,10 @@ sealed interface GenerateUiState {
   data object EmptyHistory : GenerateUiState
   data object AllExcluded : GenerateUiState
   data class Generating(val message: String) : GenerateUiState
-  data class Success(val playlistId: String) : GenerateUiState
+  data class Success(
+    val playlistId: String,
+    val suggestions: List<TasteSuggestion> = emptyList(),
+  ) : GenerateUiState
   data class Error(val message: String) : GenerateUiState
 }
 
@@ -54,7 +58,11 @@ class GenerateViewModel @Inject constructor(
               _uiState.value = GenerateUiState.Generating(state.message)
             }
             is GenerationState.Done -> {
-              _uiState.value = GenerateUiState.Success(state.playlistId)
+              _uiState.value =
+                GenerateUiState.Success(
+                  playlistId = state.playlistId,
+                  suggestions = localTasteEngine.mix.value?.suggestions.orEmpty(),
+                )
             }
             is GenerationState.Failed -> {
               val message = state.error
@@ -90,7 +98,11 @@ class GenerateViewModel @Inject constructor(
         val result = localTasteEngine.generate()
         result.fold(
           onSuccess = { playlistId ->
-            _uiState.value = GenerateUiState.Success(playlistId)
+            _uiState.value =
+              GenerateUiState.Success(
+                playlistId = playlistId,
+                suggestions = localTasteEngine.mix.value?.suggestions.orEmpty(),
+              )
             generationStatus?.succeed(playlistId)
           },
           onFailure = { error ->

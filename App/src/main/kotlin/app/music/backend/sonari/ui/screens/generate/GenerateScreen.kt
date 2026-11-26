@@ -3,6 +3,7 @@
 package app.music.backend.sonari.ui.screens.generate
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -48,7 +50,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.music.backend.sonari.LocalDatabase
 import app.music.backend.sonari.LocalPlayerAwareWindowInsets
+import app.music.backend.sonari.LocalPlayerConnection
 import app.music.backend.sonari.R
+import app.music.backend.sonari.generate.TasteSuggestion
+import app.music.backend.sonari.innertube.models.WatchEndpoint
+import app.music.backend.sonari.models.toMediaMetadata
+import app.music.backend.sonari.playback.queues.YouTubeQueue
 import app.music.backend.sonari.viewmodels.GenerateUiState
 import app.music.backend.sonari.viewmodels.GenerateViewModel
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +70,7 @@ fun GenerateScreen(
   val stats by viewModel.statsCount.collectAsStateWithLifecycle()
   val exclusions by viewModel.exclusionCount.collectAsStateWithLifecycle()
   val database = LocalDatabase.current
+  val playerConnection = LocalPlayerConnection.current
   val coroutineScope = rememberCoroutineScope()
 
   Scaffold(
@@ -333,6 +341,37 @@ fun GenerateScreen(
               }
             }
           }
+
+          if (state.suggestions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+              text = "Why these songs",
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = "Each one is here because of something you play, on whichever service found it.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            state.suggestions.take(12).forEach { suggestion ->
+              TasteSuggestionRow(
+                suggestion = suggestion,
+                onClick = {
+                  playerConnection?.playQueue(
+                    YouTubeQueue(
+                      suggestion.song.endpoint ?: WatchEndpoint(videoId = suggestion.song.id),
+                      suggestion.song.toMediaMetadata(),
+                    )
+                  )
+                },
+              )
+            }
+          }
         }
 
         is GenerateUiState.EmptyHistory -> {
@@ -458,6 +497,40 @@ fun GenerateScreen(
       }
 
       Spacer(modifier = Modifier.height(24.dp))
+    }
+  }
+}
+
+@Composable
+private fun TasteSuggestionRow(
+  suggestion: TasteSuggestion,
+  onClick: () -> Unit,
+) {
+  Row(
+    modifier =
+      Modifier.fillMaxWidth()
+        .clip(RoundedCornerShape(14.dp))
+        .clickable(onClick = onClick)
+        .padding(horizontal = 4.dp, vertical = 10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(modifier = Modifier.weight(1f)) {
+      Text(
+        text = suggestion.song.title,
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+      Spacer(modifier = Modifier.height(2.dp))
+      Text(
+        text = "${suggestion.song.artists.joinToString(", ") { it.name }} · ${suggestion.reason}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
     }
   }
 }
