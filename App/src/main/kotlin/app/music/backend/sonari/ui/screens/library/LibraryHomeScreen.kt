@@ -76,6 +76,7 @@ import app.music.backend.sonari.playback.isProviderMediaId
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.playback.queues.YouTubeQueue
 import app.music.backend.sonari.ui.component.ForYouCard
+import app.music.backend.sonari.ui.component.ForYouBuildingCard
 import app.music.backend.sonari.ui.component.LocalMenuState
 import app.music.backend.sonari.ui.menu.ForYouMixMenu
 import app.music.backend.sonari.viewmodels.LibraryMixViewModel
@@ -113,6 +114,7 @@ fun LibraryHomeScreen(
   val haptic = LocalHapticFeedback.current
 
   val tasteMixes by tasteViewModel.mixes.collectAsState()
+  val tasteLoading by tasteViewModel.loading.collectAsState()
   val tasteSavingId by tasteViewModel.savingId.collectAsState()
   val tasteKept by tasteViewModel.kept.collectAsState()
   val menuState = LocalMenuState.current
@@ -257,15 +259,21 @@ fun LibraryHomeScreen(
       }
     }
 
-    if (tasteMixes.isNotEmpty()) {
+    if (tasteMixes.isNotEmpty() || tasteLoading) {
       item(key = "for_you_header") { SectionHeader(title = "For you") }
+    }
 
+    if (tasteMixes.isEmpty() && tasteLoading) {
+      item(key = "for_you_building") { ForYouBuildingCard() }
+    }
+
+    if (tasteMixes.isNotEmpty()) {
       tasteMixes.forEach { mix ->
         item(key = "for_you_card_${mix.playlistId}") {
           ForYouCard(
             title = mix.playlistName,
-            coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
-            songCount = mix.suggestions.size,
+            coverUrl = mix.artworkUrl,
+            songCount = mix.songCount,
             kept = mix.playlistId in tasteKept,
             saving = tasteSavingId == mix.playlistId,
             onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },

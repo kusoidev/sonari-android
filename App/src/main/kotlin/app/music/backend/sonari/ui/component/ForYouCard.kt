@@ -2,6 +2,7 @@ package app.music.backend.sonari.ui.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,6 +113,49 @@ fun ForYouCard(
       ) {
         Text(if (saving) "Saving" else "Save")
       }
+    }
+  }
+}
+
+/**
+ * Stands in for the row while the first build of the session runs, so "For you" is on screen from
+ * the moment it is opened instead of appearing once the build has finished.
+ */
+@Composable
+fun ForYouBuildingCard(modifier: Modifier = Modifier) {
+  Row(
+    modifier =
+      modifier
+        .fillMaxWidth()
+        .padding(horizontal = 20.dp, vertical = 6.dp)
+        .clip(RoundedCornerShape(22.dp))
+        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        .padding(horizontal = 12.dp, vertical = 14.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(modifier = Modifier.size(84.dp), contentAlignment = Alignment.Center) {
+      CircularProgressIndicator(
+        modifier = Modifier.size(28.dp),
+        color = MaterialTheme.colorScheme.primary,
+        strokeWidth = 3.dp,
+      )
+    }
+
+    Spacer(modifier = Modifier.width(16.dp))
+
+    Column(modifier = Modifier.weight(1f)) {
+      Text(
+        text = "For you",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface,
+      )
+      Spacer(modifier = Modifier.height(5.dp))
+      Text(
+        text = "Building from what you play",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
     }
   }
 }

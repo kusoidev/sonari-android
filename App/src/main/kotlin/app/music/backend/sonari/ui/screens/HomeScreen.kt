@@ -163,6 +163,7 @@ import app.music.backend.sonari.viewmodels.CommunityPlaylistItem
 import app.music.backend.sonari.viewmodels.DailyDiscoverItem
 import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.ui.component.ForYouCard
+import app.music.backend.sonari.ui.component.ForYouBuildingCard
 import app.music.backend.sonari.viewmodels.HomeViewModel
 import app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel
 import app.music.backend.sonari.viewmodels.PodcastsViewModel
@@ -597,6 +598,7 @@ fun HomeScreen(
   val allLocalItems by viewModel.allLocalItems.collectAsState()
   val allYtItems by viewModel.allYtItems.collectAsState()
   val tasteMixes by tasteViewModel.mixes.collectAsState()
+  val tasteLoading by tasteViewModel.loading.collectAsState()
   val tasteSavingId by tasteViewModel.savingId.collectAsState()
   val tasteKept by tasteViewModel.kept.collectAsState()
   val speedDialItems by viewModel.speedDialItems.collectAsState()
@@ -1663,6 +1665,19 @@ fun HomeScreen(
                 }
             }
             is HomeSection.TasteMix -> {
+              if (tasteMixes.isEmpty() && tasteLoading) {
+                item(key = "taste_mix_building_title") {
+                  NavigationTitle(
+                    title = "For you",
+                    label = "built from what you play",
+                    modifier = Modifier.animateItem()
+                  )
+                }
+                item(key = "taste_mix_building") {
+                  ForYouBuildingCard(modifier = Modifier.animateItem())
+                }
+              }
+
               if (tasteMixes.isNotEmpty()) {
                 item(key = "taste_mix_title") {
                   NavigationTitle(
@@ -1676,8 +1691,8 @@ fun HomeScreen(
                   item(key = "taste_mix_card_${mix.playlistId}") {
                     ForYouCard(
                       title = mix.playlistName,
-                      coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
-                      songCount = mix.suggestions.size,
+                      coverUrl = mix.artworkUrl,
+                      songCount = mix.songCount,
                       kept = mix.playlistId in tasteKept,
                       saving = tasteSavingId == mix.playlistId,
                       onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },

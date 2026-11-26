@@ -80,6 +80,7 @@ import app.music.backend.sonari.constants.EnableSimpMusicKey
 import app.music.backend.sonari.constants.EnableYouLyPlusKey
 import app.music.backend.sonari.constants.FetchFasterLyricsKey
 import app.music.backend.sonari.constants.ForceOpusKey
+import app.music.backend.sonari.constants.ForYouInBackgroundKey
 import app.music.backend.sonari.constants.HideExplicitKey
 import app.music.backend.sonari.constants.HideYoutubeShortsKey
 import app.music.backend.sonari.constants.IpVersionKey
@@ -189,6 +190,8 @@ fun ContentSettings(
   val (suggestionRegion, onSuggestionRegionChange) =
     rememberPreference(key = SuggestionRegionKey, defaultValue = "system")
   val (forceOpus, onForceOpusChange) = rememberPreference(key = ForceOpusKey, defaultValue = true)
+  val (forYouInBackground, onForYouInBackgroundChange) =
+    rememberPreference(key = ForYouInBackgroundKey, defaultValue = true)
   val (enableCronet, onEnableCronetChange) =
     rememberPreference(key = EnableCronetKey, defaultValue = true)
   val (hideExplicit, onHideExplicitChange) =
@@ -705,6 +708,29 @@ fun ContentSettings(
               )
             },
             onClick = { onForceOpusChange(!forceOpus) }
+          ),
+          Material3SettingsItem(
+            isHighlighted = (highlightKey == stringResource(R.string.for_you_in_background)),
+            icon = painterResource(R.drawable.tune),
+            title = { Text(stringResource(R.string.for_you_in_background)) },
+            description = { Text(stringResource(R.string.for_you_in_background_desc)) },
+            trailingContent = {
+              Switch(
+                checked = forYouInBackground,
+                onCheckedChange = onForYouInBackgroundChange,
+                thumbContent = {
+                  Icon(
+                    painter =
+                      painterResource(
+                        id = if (forYouInBackground) R.drawable.check else R.drawable.close
+                      ),
+                    contentDescription = null,
+                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                  )
+                },
+              )
+            },
+            onClick = { onForYouInBackgroundChange(!forYouInBackground) }
           ),
           Material3SettingsItem(
             isHighlighted = (highlightKey == "Enable HTTP/3 (Cronet)"),

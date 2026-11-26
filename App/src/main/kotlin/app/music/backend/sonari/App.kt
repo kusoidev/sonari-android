@@ -53,6 +53,8 @@ class App : Application(), SingletonImageLoader.Factory {
 
   @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
+  @Inject lateinit var tasteMixRepository: app.music.backend.sonari.generate.TasteMixRepository
+
   override fun startForegroundService(service: Intent): android.content.ComponentName? {
     return try {
       super.startForegroundService(service)
@@ -116,6 +118,18 @@ class App : Application(), SingletonImageLoader.Factory {
             }) ?: 512
           }
           .first()
+    }
+
+    // The For you mixes are built while the app opens, so the row is there before the screen is.
+    // With the setting off, nothing is built until a screen asks for the mixes itself.
+    applicationScope.launch(Dispatchers.IO) {
+      val inBackground =
+        try {
+          dataStore.data.map { it[ForYouInBackgroundKey] ?: true }.first()
+        } catch (e: Exception) {
+          true
+        }
+      if (inBackground) tasteMixRepository.warmUp()
     }
 
     applicationScope.launch(Dispatchers.IO) {

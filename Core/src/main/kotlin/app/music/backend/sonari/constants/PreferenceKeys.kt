@@ -903,3 +903,9 @@ enum class RecommendationSource {
 }
 
 val RecommendationSourceKey = stringPreferencesKey("recommendation_source")
+
+/**
+ * Builds the For you mixes while the app opens, so the row is there before it is opened. Off builds
+ * them only when a screen asks for them, and nothing runs in the background.
+ */
+val ForYouInBackgroundKey = booleanPreferencesKey("for_you_in_background")

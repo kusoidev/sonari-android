@@ -56,7 +56,22 @@ data class TasteMix(
   val playlistId: String,
   val playlistName: String,
   val suggestions: List<TasteSuggestion>,
-)
+  /**
+   * What the last build left, kept with the mix while it is read back from disk. The songs are the
+   * playlist's own, so a card is there before this session's build has finished, reading its size
+   * and cover from here.
+   */
+  val builtSongCount: Int = 0,
+  val builtCoverUrl: String? = null,
+) {
+  /** How many songs the card says the mix holds. */
+  val songCount: Int
+    get() = suggestions.size.takeIf { it > 0 } ?: builtSongCount
+
+  /** The cover the card shows: the first song's artwork, or the one the last build kept. */
+  val artworkUrl: String?
+    get() = suggestions.firstOrNull()?.song?.thumbnail ?: builtCoverUrl
+}
 
 const val DOWNLOADED_BONUS = 1.2f
 const val SEED_WEIGHT = 0.6f
