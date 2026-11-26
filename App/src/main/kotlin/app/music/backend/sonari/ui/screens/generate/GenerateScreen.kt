@@ -81,7 +81,7 @@ fun GenerateScreen(
       TopAppBar(
         title = {
           Text(
-            text = "Local Taste Engine",
+            text = "For you",
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
           )
@@ -119,14 +119,14 @@ fun GenerateScreen(
       ) {
         Column {
           Text(
-            text = "Smart Taste Mix",
+            text = "Suggestions from what you play",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
           )
           Spacer(modifier = Modifier.height(6.dp))
           Text(
-            text = "Generates a personalized mix from your listening momentum. 100% on-device, offline, and account-free.",
+            text = "Built from the songs you play, like and keep offline. The library and the home screen fill it in on their own, no button needed.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
@@ -238,7 +238,7 @@ fun GenerateScreen(
             ),
           ) {
             Text(
-              text = "Generate Taste Mix",
+              text = "Build suggestions now",
               fontWeight = FontWeight.Bold,
               fontSize = 16.sp,
             )
@@ -305,14 +305,14 @@ fun GenerateScreen(
               }
               Spacer(modifier = Modifier.height(16.dp))
               Text(
-                text = "Taste Mix Ready!",
+                text = "Suggestions ready",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
               )
               Spacer(modifier = Modifier.height(6.dp))
               Text(
-                text = "Your personalized offline playlist has been saved to your library.",
+                text = "They are on the home screen and at the bottom of the library.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -340,7 +340,7 @@ fun GenerateScreen(
                   .height(50.dp),
                 shape = RoundedCornerShape(24.dp),
               ) {
-                Text("Generate Another")
+                Text("Build again")
               }
             }
           }

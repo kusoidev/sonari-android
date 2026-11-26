@@ -26,6 +26,12 @@ class TasteSuggestionsViewModel @Inject constructor(
   private val _loading = MutableStateFlow(true)
   val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
+  private val _saving = MutableStateFlow(false)
+  val saving: StateFlow<Boolean> = _saving.asStateFlow()
+
+  private val _savedPlaylistId = MutableStateFlow<String?>(null)
+  val savedPlaylistId: StateFlow<String?> = _savedPlaylistId.asStateFlow()
+
   private var job: Job? = null
 
   init {
@@ -43,6 +49,16 @@ class TasteSuggestionsViewModel @Inject constructor(
         _suggestions.value = found
         _loading.value = false
       }
+  }
+
+  fun saveAsPlaylist() {
+    if (_suggestions.value.isEmpty() || _saving.value) return
+    viewModelScope.launch {
+      _saving.value = true
+      val id = localTasteEngine.save(_suggestions.value)
+      if (id != null) _savedPlaylistId.value = id
+      _saving.value = false
+    }
   }
 
   companion object {

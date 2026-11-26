@@ -125,7 +125,7 @@ open class LocalTasteEngine @Inject constructor(
 
         val timeOfDay = currentTimeOfDay()
         val playlistId = "local_taste_$timeOfDay"
-        val playlistName = "Taste Mix (${timeOfDay.replaceFirstChar { it.uppercase() }})"
+        val playlistName = "For you (${timeOfDay.replaceFirstChar { it.uppercase() }})"
 
         persistPlaylist(playlistId, playlistName, finalSuggestions.map { it.song })
         _mix.value = TasteMix(playlistId, playlistName, finalSuggestions)
@@ -140,7 +140,24 @@ open class LocalTasteEngine @Inject constructor(
     }
 
   /**
-   * The mix without saving a playlist: what the home row and the mix screen show as soon as the app
+   * Saves suggestions as a playlist the user keeps, under the same name generation uses, so saving
+   * twice refreshes that one playlist instead of piling up copies.
+   */
+  open suspend fun save(suggestions: List<TasteSuggestion>): String? =
+    withContext(Dispatchers.IO) {
+      if (suggestions.isEmpty() || database == null) return@withContext null
+      val timeOfDay = currentTimeOfDay()
+      val playlistId = "local_taste_$timeOfDay"
+      persistPlaylist(
+        playlistId,
+        "For you (${timeOfDay.replaceFirstChar { it.uppercase() }})",
+        suggestions.map { it.song },
+      )
+      playlistId
+    }
+
+  /**
+   * The mix without saving a playlist: what the home row and the library show as soon as the app
    * opens, so the suggestions are there before the user asks for them.
    */
   open suspend fun suggest(count: Int = MAX_SUGGESTIONS): List<TasteSuggestion> =

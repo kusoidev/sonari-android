@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -56,6 +58,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
+import android.widget.Toast
+import androidx.core.net.toUri
+import androidx.media3.exoplayer.offline.DownloadRequest
+import androidx.media3.exoplayer.offline.DownloadService
 import coil3.compose.AsyncImage
 import app.music.backend.sonari.LocalPlayerAwareWindowInsets
 import app.music.backend.sonari.LocalPlayerConnection
@@ -63,8 +69,15 @@ import app.music.backend.sonari.R
 import app.music.backend.sonari.db.entities.Playlist
 import app.music.backend.sonari.db.entities.Song
 import app.music.backend.sonari.extensions.toMediaItem
+import app.music.backend.sonari.innertube.models.WatchEndpoint
+import app.music.backend.sonari.models.toMediaMetadata
+import app.music.backend.sonari.playback.ExoDownloadService
+import app.music.backend.sonari.playback.isProviderMediaId
 import app.music.backend.sonari.playback.queues.ListQueue
+import app.music.backend.sonari.playback.queues.YouTubeQueue
+import app.music.backend.sonari.ui.component.TasteSuggestionCard
 import app.music.backend.sonari.viewmodels.LibraryMixViewModel
+import app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel
 import kotlinx.coroutines.delay
 
 private data class HeroItem(
@@ -80,6 +93,7 @@ fun LibraryHomeScreen(
   navController: NavController,
   filterContent: @Composable () -> Unit,
   viewModel: LibraryMixViewModel = hiltViewModel(),
+  tasteViewModel: TasteSuggestionsViewModel = hiltViewModel(),
 ) {
   val playerConnection = LocalPlayerConnection.current
   val mediaMetadata by
@@ -95,6 +109,11 @@ fun LibraryHomeScreen(
   val allSongsCount by viewModel.allSongsCount.collectAsState()
   val listState = rememberLazyListState()
   val haptic = LocalHapticFeedback.current
+
+  val tasteSuggestions by tasteViewModel.suggestions.collectAsState()
+  val tasteSaving by tasteViewModel.saving.collectAsState()
+  val savedForYouPlaylistId by tasteViewModel.savedPlaylistId.collectAsState()
+  val context = LocalContext.current
 
   val current = mediaMetadata
   val hero =
@@ -230,6 +249,101 @@ fun LibraryHomeScreen(
             PlaylistCard(
               playlist = playlist,
               onClick = { navController.navigate("local_playlist/${playlist.id}") },
+            )
+          }
+        }
+      }
+    }
+
+    if (tasteSuggestions.isNotEmpty()) {
+      item(key = "for_you_actions") {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        ) {
+          Text(
+            text = "For you",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+          )
+
+          if (savedForYouPlaylistId != null) {
+            OutlinedButton(
+              onClick = { navController.navigate("local_playlist/$savedForYouPlaylistId") }
+            ) {
+              Text("Open")
+            }
+          } else {
+            OutlinedButton(onClick = { tasteViewModel.saveAsPlaylist() }, enabled = !tasteSaving) {
+              Text(if (tasteSaving) "Saving" else "Save")
+            }
+          }
+
+          Spacer(Modifier.width(8.dp))
+
+          OutlinedButton(
+            onClick = {
+              val songs = tasteSuggestions.filter { it.song.id.length == 11 }
+              if (songs.isEmpty()) return@OutlinedButton
+              songs.forEach { suggestion ->
+                val id = suggestion.song.id
+                val request =
+                  DownloadRequest.Builder(id, id.toUri())
+                    .setCustomCacheKey(id)
+                    .setData(suggestion.song.title.toByteArray())
+                    .build()
+                DownloadService.sendAddDownload(
+                  context,
+                  ExoDownloadService::class.java,
+                  request,
+                  false
+                )
+              }
+              Toast.makeText(
+                context,
+                "Downloading ${songs.size} songs",
+                Toast.LENGTH_SHORT
+              ).show()
+            }
+          ) {
+            Text("Download")
+          }
+        }
+      }
+
+      item(key = "for_you_row") {
+        LazyRow(
+          contentPadding = PaddingValues(horizontal = 20.dp),
+          horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+          items(
+            items = tasteSuggestions,
+            key = { "suggest_${it.song.id}" },
+          ) { suggestion ->
+            TasteSuggestionCard(
+              suggestion = suggestion,
+              onClick = {
+                val connection = playerConnection ?: return@TasteSuggestionCard
+                val song = suggestion.song
+                if (song.id.isProviderMediaId()) {
+                  connection.playQueue(
+                    ListQueue(
+                      title = song.title,
+                      items = listOf(song.toMediaItem()),
+                      startIndex = 0,
+                    )
+                  )
+                } else {
+                  connection.playQueue(
+                    YouTubeQueue(
+                      song.endpoint ?: WatchEndpoint(videoId = song.id),
+                      song.toMediaMetadata(),
+                    )
+                  )
+                }
+              },
             )
           }
         }

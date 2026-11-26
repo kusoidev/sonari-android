@@ -271,16 +271,6 @@ fun LibraryPlaylistsScreen(
                   modifier = itemModifier
                 )
               }
-
-
-
-              AutoPlaylistButton(
-                title = "Taste Mix",
-                icon = R.drawable.playlist_play,
-                iconTint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                onClick = { navController.navigate("generate") },
-                modifier = itemModifier
-              )
             }
           }
 
@@ -384,16 +374,6 @@ fun LibraryPlaylistsScreen(
                   modifier = itemModifier
                 )
               }
-
-
-
-              AutoPlaylistButton(
-                title = "Taste Mix",
-                icon = R.drawable.playlist_play,
-                iconTint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                onClick = { navController.navigate("generate") },
-                modifier = itemModifier
-              )
             }
           }
 
