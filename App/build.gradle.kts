@@ -33,8 +33,8 @@ android {
     applicationId = "com.kusoi.sonari"
     minSdk = 26
     targetSdk = 36
-    versionCode = 176
-    versionName = "1.8.2"
+    versionCode = 177
+    versionName = "1.8.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables.useSupportLibrary = true
