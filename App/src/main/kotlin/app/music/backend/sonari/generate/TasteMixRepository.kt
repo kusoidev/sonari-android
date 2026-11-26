@@ -229,6 +229,6 @@ constructor(
     const val EmptyRetryMillis = 60L * 1000
 
     /** No build may leave the row waiting longer than this; a source that never answers is dropped. */
-    const val BuildTimeoutMillis = 25_000L
+    const val BuildTimeoutMillis = 45_000L
   }
 }

@@ -259,9 +259,13 @@ fun LibraryHomeScreen(
       }
     }
 
-    if (tasteMixes.isEmpty()) {
-      item(key = "for_you_header") { SectionHeader(title = "For you") }
+    // The row is always titled, whatever is in it, and its refresh asks the sources again: a mix
+    // that came out short, or a library that has just been added to, can be rebuilt from here.
+    item(key = "for_you_header") {
+      SectionHeader(title = "For you", onRefresh = { tasteViewModel.refresh() })
+    }
 
+    if (tasteMixes.isEmpty()) {
       item(key = "for_you_building") {
         if (tasteLoading) {
           ForYouBuildingCard()
@@ -274,8 +278,7 @@ fun LibraryHomeScreen(
       }
     }
 
-    if (tasteMixes.isNotEmpty()) {
-      tasteMixes.forEach { mix ->
+    tasteMixes.forEach { mix ->
         item(key = "for_you_card_${mix.playlistId}") {
           ForYouCard(
             title = mix.playlistName,
@@ -305,7 +308,6 @@ fun LibraryHomeScreen(
           )
         }
       }
-    }
 
     item(key = "bottom_spacer") { Spacer(Modifier.height(24.dp)) }
   }
@@ -513,7 +515,11 @@ private fun QuickTile(
 }
 
 @Composable
-private fun SectionHeader(title: String, onClick: (() -> Unit)? = null) {
+private fun SectionHeader(
+  title: String,
+  onClick: (() -> Unit)? = null,
+  onRefresh: (() -> Unit)? = null,
+) {
   Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier =
@@ -534,6 +540,19 @@ private fun SectionHeader(title: String, onClick: (() -> Unit)? = null) {
         contentDescription = null,
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(20.dp),
+      )
+    }
+    if (onRefresh != null) {
+      Spacer(Modifier.weight(1f))
+      Icon(
+        painter = painterResource(R.drawable.refresh),
+        contentDescription = "Refresh",
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier =
+          Modifier.size(36.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .clickable(onClick = onRefresh)
+            .padding(8.dp),
       )
     }
   }

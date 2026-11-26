@@ -266,8 +266,9 @@ open class LocalTasteEngine @Inject constructor(
       for (cluster in seedClusters(usable)) {
         if (mixes.size >= ForYouMixCount) break
 
-        // Each mix is a different size, so the cards do not all read the same.
-        val target = if (count > 0) count else Random.nextInt(TargetMixSongs, MaxMixSongs + 1)
+        // A mix holds twenty-five songs, every one of them: the same size each time, so a build can
+        // fill it fully rather than cut it wherever the sources happened to run out.
+        val target = if (count > 0) count else TargetMixSongs
 
         val suggestions =
           buildSuggestions(
@@ -282,14 +283,35 @@ open class LocalTasteEngine @Inject constructor(
           )
         if (suggestions.size < MinMixSongs) continue
 
-        // What one mix already used is not offered again by the next.
-        exclusions += suggestions.map { it.key }
-
         val index = mixes.size
         val playlistId = mixPlaylistId(index)
         val playlistName = mixPlaylistName(index, cluster.first().title)
-        persistPlaylist(playlistId, playlistName, suggestions.map { it.song })
-        mixes += TasteMix(playlistId, playlistName, suggestions)
+
+        // Short of twenty-five, the mix is grown from its own songs: the graph keeps going from
+        // what it has just found, round after round, until it holds the whole twenty-five.
+        var filled = suggestions
+        if (filled.size < target) {
+          persistPlaylist(playlistId, playlistName, filled.map { it.song })
+          var quiet = 0
+          while (filled.size < target && quiet < 2) {
+            val added =
+              runCatching { moreLikeThis(playlistId, count = target - filled.size) }
+                .getOrDefault(emptyList())
+            if (added.isEmpty()) {
+              quiet++
+            } else {
+              quiet = 0
+              filled = (filled + added).distinctBy { it.key }
+              persistPlaylist(playlistId, playlistName, filled.map { it.song })
+            }
+          }
+        }
+
+        // What one mix already used is not offered again by the next.
+        exclusions += filled.map { it.key }
+
+        persistPlaylist(playlistId, playlistName, filled.map { it.song })
+        mixes += TasteMix(playlistId, playlistName, filled)
       }
 
       // A mix is meant to hold twenty-five songs. One that fell short is kept only when none
