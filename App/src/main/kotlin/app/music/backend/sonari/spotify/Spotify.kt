@@ -1070,11 +1070,6 @@ object Spotify {
     }
   }
 
-  /** One track, so its preview can be played once the queue reaches it. */
-  suspend fun track(id: String): Result<SpotifyTrack> = runCatching {
-    authenticatedGet<SpotifyTrack>("tracks/$id", failFastOn429 = true)
-  }
-
   // ── Search (GQL: searchDesktop) ─────────────────────────────────────
 
   suspend fun search(

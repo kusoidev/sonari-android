@@ -395,7 +395,7 @@ fun LastFMSettingsScreen(navController: NavController) {
               title = { Text("SoundCloud client ID") },
               description = {
                 Text(
-                  if (soundCloudClientId.isBlank()) "Off: YouTube Music, Last.fm and Spotify only"
+                  if (soundCloudClientId.isBlank()) "Off: YouTube Music and Last.fm only"
                   else "On: SoundCloud suggests and plays too"
                 )
               },

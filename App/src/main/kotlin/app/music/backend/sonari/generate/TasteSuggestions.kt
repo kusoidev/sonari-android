@@ -9,7 +9,6 @@ import timber.log.Timber
 /** Where a suggestion was found. Used to balance the mix and to explain it on screen. */
 enum class TasteSource {
   SOUNDS_LIKE,
-  SPOTIFY,
   ARTIST,
   SOUNDCLOUD,
   RADIO,
@@ -54,7 +53,6 @@ const val SEED_WEIGHT = 0.6f
 fun sourceBonusFor(source: TasteSource): Float =
   when (source) {
     TasteSource.SOUNDS_LIKE -> 1.8f
-    TasteSource.SPOTIFY -> 1.5f
     TasteSource.ARTIST -> 1.2f
     TasteSource.SOUNDCLOUD -> 1.1f
     TasteSource.RADIO -> 1.0f
@@ -66,7 +64,7 @@ internal fun sourceShare(source: TasteSource, count: Int): Int {
   val base = (count / 3).coerceAtLeast(3)
   return when (source) {
     TasteSource.SOUNDS_LIKE -> (count / 2).coerceAtLeast(base)
-    TasteSource.ARTIST, TasteSource.SPOTIFY -> base + 1
+    TasteSource.ARTIST -> base + 1
     else -> base
   }
 }

@@ -9,9 +9,6 @@ import app.music.backend.sonari.innertube.models.Artist
 import app.music.backend.sonari.innertube.models.SongItem
 import app.music.backend.sonari.innertube.models.WatchEndpoint
 import app.music.backend.sonari.playback.SOUNDCLOUD_MEDIA_PREFIX
-import app.music.backend.sonari.playback.SPOTIFY_MEDIA_PREFIX
-import app.music.backend.sonari.spotify.Spotify
-import app.music.backend.sonari.spotifyimport.SpotifyImportRepository
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -117,79 +114,6 @@ internal suspend fun collectRadioSuggestions(
 
 private fun songKeyOf(song: SongItem): String =
   trackKeyOf(song.title, song.artists.joinToString(", ") { it.name })
-
-/**
- * Spotify's recommendations, seeded by the artists the user plays most. Every track is matched to a
- * playable YouTube Music song, so this only widens what the mix can find.
- */
-/**
- * Spotify's own audio, seeded by the artists the user plays most. The Web API only hands out a
- * thirty second preview per track, so only tracks that still carry one can join the mix.
- */
-@Singleton
-class SpotifyTasteSource
-@Inject
-constructor(
-  private val spotifyImportRepository: SpotifyImportRepository,
-  private val dataStore: DataStore<Preferences>,
-) {
-  suspend fun suggest(seeds: List<TasteSeed>, limit: Int = 8): List<TasteSuggestion> =
-    withContext(Dispatchers.IO) {
-      val session = runCatching { spotifyImportRepository.restoreSession() }.getOrNull()
-      if (session == null || !session.isAuthenticated) return@withContext emptyList()
-
-      val artists = seeds.map { it.artist.trim() }.filter { it.isNotBlank() }.distinct().take(3)
-      if (artists.isEmpty()) return@withContext emptyList()
-
-      val hideExplicit = runCatching { dataStore.data.first()[HideExplicitKey] }.getOrNull() == true
-
-      val artistIds = coroutineScope {
-        artists.map { artist ->
-          async {
-            runCatching {
-              Spotify.search(artist, listOf("artist")).getOrNull()?.artists?.items?.firstOrNull()?.id
-            }.getOrNull()
-          }
-        }.awaitAll().filterNotNull().distinct()
-      }
-      if (artistIds.isEmpty()) return@withContext emptyList()
-
-      val tracks = runCatching {
-        Spotify.recommendations(seedArtistIds = artistIds.take(5), limit = limit * 2)
-          .getOrNull()
-          ?.tracks
-          .orEmpty()
-      }.getOrDefault(emptyList())
-
-      val playable = tracks.filter { track ->
-        track.id.isNotBlank() &&
-          !track.previewUrl.isNullOrBlank() &&
-          (!hideExplicit || !track.explicit)
-      }
-
-      val reason =
-        if (artists.size == 1) "Spotify preview, near ${artists.first()}"
-        else "Spotify preview, near your top artists"
-
-      playable.take(limit).map { track ->
-        TasteSuggestion(
-          song =
-            SongItem(
-              id = SPOTIFY_MEDIA_PREFIX + track.id,
-              title = track.name,
-              artists = track.artists.map { Artist(name = it.name, id = null) },
-              album = null,
-              duration = (track.durationMs / 1000).takeIf { it > 0 },
-              thumbnail = track.album?.images?.firstOrNull()?.url.orEmpty(),
-              explicit = track.explicit,
-            ),
-          source = TasteSource.SPOTIFY,
-          reason = reason,
-          score = 5f + sourceBonusFor(TasteSource.SPOTIFY),
-        )
-      }
-    }
-}
 
 data class SoundCloudTrack(
   val id: String,

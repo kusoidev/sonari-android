@@ -3,8 +3,6 @@ package app.music.backend.sonari.playback
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import app.music.backend.sonari.constants.SoundCloudClientIdKey
-import app.music.backend.sonari.spotify.Spotify
-import app.music.backend.sonari.spotifyimport.SpotifyImportRepository
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -18,28 +16,21 @@ import org.json.JSONObject
 import timber.log.Timber
 
 const val SOUNDCLOUD_MEDIA_PREFIX = "soundcloud:"
-const val SPOTIFY_MEDIA_PREFIX = "spotify:"
 
-fun String.isProviderMediaId(): Boolean =
-  startsWith(SOUNDCLOUD_MEDIA_PREFIX) || startsWith(SPOTIFY_MEDIA_PREFIX)
+fun String.isProviderMediaId(): Boolean = startsWith(SOUNDCLOUD_MEDIA_PREFIX)
 
 private const val DAY_MILLIS = 24L * 60 * 60 * 1000
-private const val PREVIEW_TTL_MILLIS = 10L * 60 * 1000
 private const val USER_AGENT = "Sonari/1.7"
 
 /**
- * Audio that does not come from YouTube Music: a SoundCloud progressive stream, or the thirty second
- * preview Spotify hands out. The media id names the service and the url is fetched when playback
- * reaches the track, then kept until it expires.
- *
- * Spotify's Web API has no full-track streaming, so a Spotify track can only play its preview.
+ * Audio that does not come from YouTube Music: a SoundCloud progressive stream. The media id names
+ * the service and the url is fetched when playback reaches the track, then kept until it expires.
  */
 @Singleton
 class ExternalMediaStreams
 @Inject
 constructor(
   private val dataStore: DataStore<Preferences>,
-  private val spotifyImportRepository: SpotifyImportRepository,
 ) {
   private val client =
     OkHttpClient.Builder()
@@ -58,12 +49,10 @@ constructor(
     cached(mediaId)?.let { return@withContext it }
 
     val stream =
-      when {
-        mediaId.startsWith(SOUNDCLOUD_MEDIA_PREFIX) ->
-          soundCloudStream(mediaId.removePrefix(SOUNDCLOUD_MEDIA_PREFIX))
-        mediaId.startsWith(SPOTIFY_MEDIA_PREFIX) ->
-          spotifyStream(mediaId.removePrefix(SPOTIFY_MEDIA_PREFIX))
-        else -> null
+      if (mediaId.startsWith(SOUNDCLOUD_MEDIA_PREFIX)) {
+        soundCloudStream(mediaId.removePrefix(SOUNDCLOUD_MEDIA_PREFIX))
+      } else {
+        null
       }
 
     if (stream != null) {
@@ -115,21 +104,6 @@ constructor(
     return ResolvedStream(
       url = streamUrl,
       expiresAtMs = System.currentTimeMillis() + DAY_MILLIS,
-      headers = emptyMap(),
-    )
-  }
-
-  private suspend fun spotifyStream(trackId: String): ResolvedStream? {
-    if (trackId.isBlank()) return null
-    val session = runCatching { spotifyImportRepository.restoreSession() }.getOrNull()
-    if (session == null || !session.isAuthenticated) return null
-
-    val track = runCatching { Spotify.track(trackId).getOrNull() }.getOrNull() ?: return null
-    val preview = track.previewUrl?.takeIf { it.isNotBlank() } ?: return null
-
-    return ResolvedStream(
-      url = preview,
-      expiresAtMs = System.currentTimeMillis() + PREVIEW_TTL_MILLIS,
       headers = emptyMap(),
     )
   }

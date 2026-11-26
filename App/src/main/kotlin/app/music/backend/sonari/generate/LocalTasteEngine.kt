@@ -71,8 +71,8 @@ internal fun applyCandidateFilter(stats: SongPlayStatsEntity): Boolean =
 
 /**
  * Turns the listening history into seeds, then asks every source for songs that might follow them.
- * The base engine knows YouTube Music only; [RecommendationEngine] adds Last.fm, Spotify and
- * SoundCloud on top of it.
+ * The base engine knows YouTube Music only; [RecommendationEngine] adds Last.fm and SoundCloud
+ * on top of it.
  */
 @Singleton
 open class LocalTasteEngine @Inject constructor(

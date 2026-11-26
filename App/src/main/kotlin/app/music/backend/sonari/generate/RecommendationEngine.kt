@@ -37,9 +37,8 @@ fun scoreCandidateWithExternals(
 }
 
 /**
- * Widens the base taste mix with other providers: Last.fm says what sounds like it, Spotify says
- * what sits next to the artists the user plays, SoundCloud says what floats around the same tracks.
- * Every candidate is still matched to a playable YouTube Music song.
+ * Widens the base taste mix with other providers: Last.fm says what sounds like it and who sounds
+ * like the artists the user plays, SoundCloud says what floats around the same tracks.
  */
 @Singleton
 open class RecommendationEngine @Inject constructor(
@@ -49,7 +48,6 @@ open class RecommendationEngine @Inject constructor(
   private val lastFmTasteApi: LastFmTasteApi,
   private val genresRepository: GenresRepository? = null,
   database: MusicDatabase? = null,
-  private val spotifyTasteSource: SpotifyTasteSource? = null,
   private val soundCloudTasteSource: SoundCloudTasteSource? = null,
 ) : LocalTasteEngine(songPlayStatsDao, recommendationExclusionDao, database) {
 
@@ -67,14 +65,6 @@ open class RecommendationEngine @Inject constructor(
       val jobs = mutableListOf<Deferred<List<TasteSuggestion>>>()
 
       jobs += async { collectLastFmSuggestions(seeds, exclusions, tasteProfile) }
-
-      spotifyTasteSource?.let { source ->
-        jobs +=
-          async {
-            withTimeoutOrNull(SOURCE_TIMEOUT_MILLIS) { source.suggest(seeds, limit = count / 2) }
-              .orEmpty()
-          }
-      }
 
       soundCloudTasteSource?.let { source ->
         jobs +=

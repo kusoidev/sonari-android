@@ -212,7 +212,7 @@ fun GenerateScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
               Text(
-                text = "• Asks for the artist, what sounds like it, the radio, and Spotify or SoundCloud if they are on",
+                text = "• Asks for the artist, what sounds like it, the radio, and SoundCloud if a client ID is set",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
@@ -367,7 +367,7 @@ fun GenerateScreen(
                 onClick = {
                   val song = suggestion.song
                   if (song.id.isProviderMediaId()) {
-                    // Spotify and SoundCloud tracks play their own audio, not a YouTube copy.
+                    // SoundCloud tracks play their own audio, not a YouTube copy.
                     playerConnection?.playQueue(
                       ListQueue(
                         title = song.title,
