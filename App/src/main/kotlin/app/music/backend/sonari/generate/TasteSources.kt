@@ -78,47 +78,62 @@ internal suspend fun collectRadioSuggestions(
   seeds: List<TasteSeed>,
   exclusions: Set<String>,
   maxSeeds: Int = 5,
-): List<TasteSuggestion> {
-  val out = mutableListOf<TasteSuggestion>()
+): List<TasteSuggestion> = coroutineScope {
+  // Every seed is asked at once: one after another, five seeds meant ten requests one behind the
+  // other, and the row waited on all of them.
+  seeds
+    .filter { it.videoId != null }
+    .take(maxSeeds)
+    .map { seed ->
+      async(Dispatchers.IO) {
+        val videoId = seed.videoId ?: return@async emptyList()
+        val next =
+          runCatching { YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull() }.getOrNull()
+            ?: return@async emptyList()
 
-  for (seed in seeds.filter { it.videoId != null }.take(maxSeeds)) {
-    val videoId = seed.videoId ?: continue
-    val next = runCatching { YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull() }.getOrNull()
-      ?: continue
+        val out = mutableListOf<TasteSuggestion>()
 
-    next.items
-      .filterIsInstance<SongItem>()
-      .filter { song -> songKeyOf(song) !in exclusions }
-      .distinctBy { songKeyOf(it) }
-      .take(4)
-      .forEachIndexed { index, song ->
-        out +=
-          TasteSuggestion(
-            song = song,
-            source = TasteSource.SOUNDS_LIKE,
-            reason = "Sounds like ${seed.title}",
-            score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDS_LIKE) - index * RANK_DECAY,
-          )
-      }
+        next.items
+          .filterIsInstance<SongItem>()
+          .filter { song -> songKeyOf(song) !in exclusions }
+          .distinctBy { songKeyOf(it) }
+          .take(4)
+          .forEachIndexed { index, song ->
+            out +=
+              TasteSuggestion(
+                song = song,
+                source = TasteSource.SOUNDS_LIKE,
+                reason = "Sounds like ${seed.title}",
+                score =
+                  seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDS_LIKE) -
+                    index * RANK_DECAY,
+              )
+          }
 
-    next.relatedEndpoint?.let { endpoint ->
-      runCatching { YouTube.related(endpoint).getOrNull()?.songs.orEmpty() }.getOrDefault(emptyList())
-        .filter { song -> songKeyOf(song) !in exclusions }
-        .distinctBy { songKeyOf(it) }
-        .take(3)
-        .forEachIndexed { index, song ->
-          out +=
-            TasteSuggestion(
-              song = song,
-              source = TasteSource.RADIO,
-              reason = "Radio of ${seed.title}",
-              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.RADIO) - index * RANK_DECAY,
-            )
+        next.relatedEndpoint?.let { endpoint ->
+          runCatching { YouTube.related(endpoint).getOrNull()?.songs.orEmpty() }
+            .getOrDefault(emptyList())
+            .filter { song -> songKeyOf(song) !in exclusions }
+            .distinctBy { songKeyOf(it) }
+            .take(3)
+            .forEachIndexed { index, song ->
+              out +=
+                TasteSuggestion(
+                  song = song,
+                  source = TasteSource.RADIO,
+                  reason = "Radio of ${seed.title}",
+                  score =
+                    seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.RADIO) -
+                      index * RANK_DECAY,
+                )
+            }
         }
-    }
-  }
 
-  return out
+        out
+      }
+    }
+    .awaitAll()
+    .flatten()
 }
 
 data class SoundCloudTrack(

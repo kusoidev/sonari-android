@@ -1,5 +1,6 @@
 package app.music.backend.sonari.generate
 
+import app.music.backend.sonari.innertube.models.Album
 import app.music.backend.sonari.innertube.models.Artist
 import app.music.backend.sonari.innertube.models.SongItem
 import app.music.backend.sonari.db.MusicDatabase
@@ -43,8 +44,17 @@ const val ForYouPlaylistName = "For you"
 /** How many mixes the app keeps ready; each grows from a different seed. */
 const val ForYouMixCount = 4
 
-/** A mix with fewer songs than this is not worth a card, so another seed is tried instead. */
-const val MinMixSongs = 20
+/** A mix with fewer songs than this is dropped, so a thin build never leaves the row empty-handed. */
+const val MinMixSongs = 6
+
+/** A mix built from the library keeps its card with this few songs; the build tops it up as it can. */
+private const val MinLocalMixSongs = 3
+
+/** How far a mix built from the library may grow; anything more is what the network brings. */
+private const val MaxLocalMixSongs = 12
+
+/** What the first song of a library mix scores, and every one after it this much less. */
+private const val FOR_YOU_TOP_SCORE = 20f
 
 /** How long a mix may grow to; its real size is picked at random inside that range each build. */
 const val MaxMixSongs = 75
@@ -277,20 +287,108 @@ open class LocalTasteEngine @Inject constructor(
             knownKeys = knownKeys,
             freshArtists = freshArtists,
           )
-        if (suggestions.size < MinMixSongs) continue
+        val filled =
+          if (suggestions.size >= MinMixSongs) suggestions
+          else topUpWithSeeds(suggestions, cluster, MinMixSongs)
+        if (filled.size < MinMixSongs) continue
 
         // What one mix already used is not offered again by the next.
-        exclusions += suggestions.map { it.key }
+        exclusions += filled.map { it.key }
 
         val index = mixes.size
         val playlistId = mixPlaylistId(index)
         val playlistName = mixPlaylistName(index, cluster.first().title)
-        persistPlaylist(playlistId, playlistName, suggestions.map { it.song })
+        persistPlaylist(playlistId, playlistName, filled.map { it.song })
+        mixes += TasteMix(playlistId, playlistName, filled)
+      }
+
+      mixes
+    }
+
+  /**
+   * The row as the app opens, built from what is already on the phone: the songs in the library, by
+   * the artists the user plays. Nothing is fetched for it, so it stands within a moment, and the
+   * mixes the network finds replace it as soon as they are ready.
+   */
+  open suspend fun buildLocalMixes(count: Int = 0): List<TasteMix> =
+    withContext(Dispatchers.IO) {
+      if (database == null) return@withContext emptyList()
+
+      val library =
+        runCatching { database?.allSongs()?.firstOrNull().orEmpty() }.getOrDefault(emptyList())
+      if (library.isEmpty()) return@withContext emptyList()
+
+      val seeds = runCatching { loadTasteSeeds() }.getOrDefault(emptyList())
+      val stored = runCatching { recommendationExclusionDao.getAll() }.getOrDefault(emptyList())
+      val exclusions = stored.mapTo(mutableSetOf()) { it.trackKey }
+      val excludedArtists = excludedArtistKeys(stored)
+      val playedArtists = seeds.mapTo(mutableSetOf()) { it.artist.trim().lowercase() }
+      val recentKeys = seeds.filter { it.recent }.mapTo(mutableSetOf()) { it.key }
+
+      // The artists the user plays come first, then the fullest ones fill the row out.
+      val byArtist =
+        library
+          .filter { song ->
+            trackKeyOf(song.song.title, artistLineOf(song)) !in exclusions &&
+              artistNamesOf(artistLineOf(song)).none { it in excludedArtists }
+          }
+          .groupBy { artistLineOf(it).trim().lowercase() }
+          .entries
+          .sortedWith(
+            compareByDescending<Map.Entry<String, List<Song>>> { entry ->
+                entry.key in playedArtists
+              }
+              .thenByDescending { entry -> entry.value.size }
+          )
+
+      val target = if (count > 0) count else Random.nextInt(MinLocalMixSongs, MaxLocalMixSongs + 1)
+
+      val mixes = mutableListOf<TasteMix>()
+      val used = mutableSetOf<String>()
+
+      for ((_, songs) in byArtist) {
+        if (mixes.size >= ForYouMixCount) break
+
+        val picked =
+          songs
+            .filter { song -> trackKeyOf(song.song.title, artistLineOf(song)) !in used }
+            // What was played this week is not what the mix opens with.
+            .sortedBy { song ->
+              if (trackKeyOf(song.song.title, artistLineOf(song)) in recentKeys) 1 else 0
+            }
+            .take(target)
+        if (picked.size < MinLocalMixSongs) continue
+        picked.forEach { song -> used += trackKeyOf(song.song.title, artistLineOf(song)) }
+
+        val index = mixes.size
+        val playlistId = mixPlaylistId(index)
+        val playlistName = mixPlaylistName(index, picked.first().song.title)
+        val suggestions =
+          picked.mapIndexed { position, song ->
+            TasteSuggestion(
+              song = tasteSongItemOf(song),
+              source = TasteSource.ARTIST,
+              reason = "More from ${artistLineOf(song)}",
+              score = FOR_YOU_TOP_SCORE - position * RANK_DECAY,
+            )
+          }
+        runCatching { persistPlaylist(playlistId, playlistName, suggestions.map { it.song }) }
         mixes += TasteMix(playlistId, playlistName, suggestions)
       }
 
       mixes
     }
+
+  /** A song of the library as the mix screen plays it, so a mix can be opened and heard. */
+  private fun tasteSongItemOf(song: Song): SongItem =
+    SongItem(
+      id = song.song.id,
+      title = song.song.title,
+      artists = song.artists.map { artist -> Artist(name = artist.name, id = artist.id) },
+      album = song.album?.let { album -> Album(name = album.title, id = album.id) },
+      duration = song.song.duration.takeIf { it > 0 },
+      thumbnail = song.thumbnailUrl.orEmpty(),
+    )
 
   /**
    * "Recommend more like this": grows a mix in place with songs that follow from what is already in

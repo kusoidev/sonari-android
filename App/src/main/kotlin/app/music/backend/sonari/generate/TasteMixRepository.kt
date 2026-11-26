@@ -119,6 +119,25 @@ constructor(
       _loading.value = true
       attemptedAt = System.currentTimeMillis()
       try {
+        // What is already on the phone stands first, before a single request is made: the row is
+        // there at once, and the mixes found over the network take over as they arrive.
+        if (_mixes.value.isEmpty()) {
+          val local =
+            try {
+              engine.buildLocalMixes()
+            } catch (e: CancellationException) {
+              throw e
+            } catch (e: Exception) {
+              Timber.e(e, "Building the For you mixes from the library failed")
+              emptyList()
+            }
+          if (local.isNotEmpty()) {
+            _mixes.value = local
+            builtAt = System.currentTimeMillis()
+            saveMixes(local)
+          }
+        }
+
         val built =
           try {
             engine.buildMixes()
