@@ -58,8 +58,9 @@ open class RecommendationEngine @Inject constructor(
     count: Int,
     deep: Boolean,
   ): List<TasteSuggestion> = withContext(Dispatchers.IO) {
-    val base = runCatching { super.collectSuggestions(seeds, exclusions, count, deep) }
-      .getOrDefault(emptyList())
+    // The engine's own sources and the other providers are asked at once: one behind the other,
+    // the first mix waited for the radio to answer and then for Last.fm on top of it.
+    val local = async { runCatching { localSuggestions(seeds, exclusions, count, deep) } }
 
     val tasteProfile = runCatching { tasteProfileProvider.get() }.getOrNull()
 
@@ -83,9 +84,21 @@ open class RecommendationEngine @Inject constructor(
       jobs.map { job -> runCatching { job.await() }.getOrDefault(emptyList()) }.flatten()
     }
 
+    val base = local.await().getOrDefault(emptyList())
     Timber.d("Taste mix sources: ${base.size} local, ${external.size} external")
     base + external
   }
+
+  /**
+   * The engine's own sources, as [LocalTasteEngine] runs them. They are asked from a method of
+   * their own so they can run beside Last.fm instead of before it.
+   */
+  private suspend fun localSuggestions(
+    seeds: List<TasteSeed>,
+    exclusions: Set<String>,
+    count: Int,
+    deep: Boolean,
+  ): List<TasteSuggestion> = super.collectSuggestions(seeds, exclusions, count, deep)
 
   /** Last.fm knows what sounds like a track and who sounds like an artist. */
   private suspend fun collectLastFmSuggestions(
