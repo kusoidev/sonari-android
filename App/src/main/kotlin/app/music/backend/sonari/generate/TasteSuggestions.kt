@@ -107,15 +107,18 @@ fun sourceBonusFor(source: TasteSource): Float =
   }
 
 /** How many songs one source may add, so a single provider cannot flood the mix. */
-internal fun sourceShare(source: TasteSource, count: Int): Int {
-  val base = (count / 3).coerceAtLeast(3)
-  return when (source) {
+/**
+ * How many songs one source may add to a mix of [count]. The seed's own graph may fill it on its
+ * own — a mix stands on one artist or one song, so nothing fits it better than what follows that
+ * artist — while the wider sources only add around it.
+ */
+internal fun sourceShare(source: TasteSource, count: Int): Int =
+  when (source) {
     TasteSource.SIMILAR_TRACK,
-    TasteSource.SOUNDS_LIKE -> (count / 2).coerceAtLeast(base)
-    TasteSource.ARTIST -> base + 1
-    else -> base
+    TasteSource.SOUNDS_LIKE -> count
+    TasteSource.ARTIST -> count / 2
+    else -> count / 3
   }
-}
 
 internal fun songKeyOf(song: SongItem): String =
   trackKeyOf(song.title, song.artists.joinToString(", ") { it.name })

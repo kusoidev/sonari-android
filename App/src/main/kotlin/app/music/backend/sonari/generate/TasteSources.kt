@@ -102,7 +102,7 @@ internal suspend fun collectRadioSuggestions(
               .filterIsInstance<SongItem>()
               .filter { song -> songKeyOf(song) !in exclusions }
               .distinctBy { songKeyOf(it) }
-              .take(8)
+              .take(25)
               .forEachIndexed { index, song ->
                 out +=
                   TasteSuggestion(
@@ -120,7 +120,7 @@ internal suspend fun collectRadioSuggestions(
                 .getOrDefault(emptyList())
                 .filter { song -> songKeyOf(song) !in exclusions }
                 .distinctBy { songKeyOf(it) }
-                .take(6)
+                .take(12)
                 .forEachIndexed { index, song ->
                   out +=
                     TasteSuggestion(

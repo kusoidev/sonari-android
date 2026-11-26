@@ -151,8 +151,11 @@ android {
 
   buildTypes {
     release {
-      isMinifyEnabled = true
-      isShrinkResources = true
+      // A test install skips R8 with -PfastRelease: the same signed APK, built in a fraction of
+      // the time, without minification or shrunk resources. Never for a release build.
+      val fastRelease = project.hasProperty("fastRelease")
+      isMinifyEnabled = !fastRelease
+      isShrinkResources = !fastRelease
       isCrunchPngs = false
       isDebuggable = false
       signingConfig = signingConfigs.getByName("release")

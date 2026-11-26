@@ -292,6 +292,10 @@ open class LocalTasteEngine @Inject constructor(
         mixes += TasteMix(playlistId, playlistName, suggestions)
       }
 
+      // A mix is meant to hold twenty-five songs. One that fell short is kept only when none
+      // reached that many, so the row is never left with nothing at all.
+      val full = mixes.filter { mix -> mix.suggestions.size >= TargetMixSongs }
+      if (full.isNotEmpty()) return@withContext full
       mixes
     }
 
@@ -474,18 +478,19 @@ open class LocalTasteEngine @Inject constructor(
       excludedArtists = excludedArtists,
       allowedMarkers = allowedMarkers,
       freshArtists = freshArtists,
-      // Four songs by one artist is what a mix of twenty-five needs to stay whole.
-      maxPerArtist = 4,
+      // A mix of twenty-five songs needs the artist to hold more than a handful of them.
+      maxPerArtist = 12,
     )
   }
 
-  /** Every song the user already has, as a set of track keys. Read once per build, not per mix. */
+  /**
+   * What the user has already heard, as a set of track keys: every play and every download. The rest
+   * of the library is not on the list — a song added but never played is still a new one to offer,
+   * and leaving the whole library out left the mixes with almost nothing to fill them.
+   */
   private suspend fun loadKnownKeys(): Set<String> {
     val knownKeys = mutableSetOf<String>()
     knownKeys += runCatching { songPlayStatsDao.getAllTrackKeys() }.getOrDefault(emptyList())
-    runCatching { database?.allSongs()?.firstOrNull().orEmpty() }
-      .getOrDefault(emptyList())
-      .forEach { song -> knownKeys += trackKeyOf(song.song.title, artistLineOf(song)) }
     runCatching { database?.downloadedSongsByCreateDateAsc()?.firstOrNull().orEmpty() }
       .getOrDefault(emptyList())
       .forEach { song -> knownKeys += trackKeyOf(song.song.title, artistLineOf(song)) }
