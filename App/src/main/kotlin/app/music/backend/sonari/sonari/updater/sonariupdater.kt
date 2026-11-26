@@ -89,6 +89,7 @@ import app.music.backend.sonari.ui.component.middleItemShape
 import app.music.backend.sonari.ui.component.parseMarkdown
 import app.music.backend.sonari.ui.utils.parseMarkdownToSections
 import app.music.backend.sonari.ui.utils.parseSimpleMarkdown
+import app.music.backend.sonari.ui.utils.withoutTables
 import java.io.File
 import java.net.URL
 import java.time.LocalDateTime
@@ -749,7 +750,7 @@ suspend fun checkForUpdate(
             onSuccess(
               displayTag,
               true,
-              changelogList,
+              changelogList.withoutTables(),
               apkSizeInMB,
               formattedReleaseDate,
               description,
@@ -849,8 +850,9 @@ suspend fun fetchChangelogForVersion(currentVersion: String): WhatsNewInfo? =
         changelogList.addAll(parsedSections)
       }
 
-      if (changelogList.isEmpty() && description.isNullOrBlank()) return@withContext null
-      WhatsNewInfo(changelogList, description)
+      val cleanSections = changelogList.withoutTables()
+      if (cleanSections.isEmpty() && description.isNullOrBlank()) return@withContext null
+      WhatsNewInfo(cleanSections, description)
     } catch (e: Exception) {
       Log.e("WhatsNew", "Failed to fetch changelog for version $currentVersion: ${e.message}", e)
       null

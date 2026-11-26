@@ -98,6 +98,30 @@ fun parseSimpleMarkdown(text: String, primaryColor: Color = Color.Unspecified): 
 }
 
 /**
+ * Whether this line is a row of a markdown table: the header row, the `|---|---|` rule, or a body
+ * row. Release notes are read one line at a time and drawn as a plain list of items, which cannot
+ * draw a table — so GitHub's "which file do I want?" table came out as raw pipes in the update
+ * sheet.
+ */
+private fun String.isTableRow(): Boolean {
+  val text = trim()
+  if (text.isEmpty() || !text.contains('|')) return false
+  if (text.startsWith("|") || text.endsWith("|")) return true
+  return Regex("\\|\\s*:?-{2,}:?\\s*\\|").containsMatchIn(text)
+}
+
+/**
+ * Drops markdown tables from release notes that already arrive broken into sections (a release's
+ * `changelog.json` asset), together with any section left with no items, so the table's heading
+ * leaves with its rows. [parseMarkdownToSections] does the same for raw markdown.
+ */
+fun List<ChangelogSection>.withoutTables(): List<ChangelogSection> =
+  mapNotNull { section ->
+    val items = section.items.filterNot { it.isTableRow() }
+    if (items.isEmpty()) null else section.copy(items = items)
+  }
+
+/**
  * Parses markdown release notes (such as those from GitHub Releases) into an optional introductory
  * description and a list of structured [ChangelogSection]s.
  *
@@ -110,7 +134,9 @@ fun parseSimpleMarkdown(text: String, primaryColor: Color = Color.Unspecified): 
 fun parseMarkdownToSections(markdown: String): Pair<String?, List<ChangelogSection>> {
   if (markdown.isBlank()) return Pair(null, emptyList())
 
-  val lines = markdown.lines()
+  // Table rows are dropped as they are met, so a section that was nothing but a table (its heading,
+  // say) ends up with no items and is dropped by flushSection() below.
+  val lines = markdown.lines().filterNot { it.isTableRow() }
   val sections = mutableListOf<ChangelogSection>()
   val descriptionLines = mutableListOf<String>()
 
