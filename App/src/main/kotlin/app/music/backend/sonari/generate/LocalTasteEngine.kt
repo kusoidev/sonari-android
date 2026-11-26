@@ -262,8 +262,12 @@ open class LocalTasteEngine @Inject constructor(
         }
       if (usable.isEmpty()) return@withContext emptyList()
 
+      // The best seeds are shuffled before they are clustered, so a refresh asks other artists and
+      // brings other songs instead of the very mixes the last build left.
+      val pool = usable.take(24).shuffled()
+
       val mixes = mutableListOf<TasteMix>()
-      for (cluster in seedClusters(usable)) {
+      for (cluster in seedClusters(pool)) {
         if (mixes.size >= ForYouMixCount) break
 
         // A mix holds twenty-five songs, every one of them: the same size each time, so a build can
@@ -284,7 +288,7 @@ open class LocalTasteEngine @Inject constructor(
         if (suggestions.size < MinMixSongs) continue
 
         val index = mixes.size
-        val playlistId = mixPlaylistId(index)
+        val playlistId = freeDraftId(index)
         val playlistName = mixPlaylistName(index, cluster.first().title)
 
         // Short of twenty-five, the mix is grown from its own songs: the graph keeps going from
@@ -629,12 +633,36 @@ open class LocalTasteEngine @Inject constructor(
   private fun artistLineOf(song: Song): String =
     song.artists.joinToString(", ") { it.name }.trim()
 
+  /**
+   * The playlist a draft may be written into: the mix's own, unless the user kept one there, in which
+   * case the draft is written beside it. A kept playlist is never cleared and filled again.
+   */
+  private suspend fun freeDraftId(index: Int): String {
+    val db = database ?: return mixPlaylistId(index)
+    val base = mixPlaylistId(index)
+    var candidate = base
+    for (round in 1..50) {
+      val existing = runCatching { db.playlist(candidate).firstOrNull() }.getOrNull()
+        ?: return candidate
+      if (existing.playlist.bookmarkedAt == null) return candidate
+      candidate = "${base}_draft$round"
+    }
+    return candidate
+  }
+
   protected suspend fun persistPlaylist(
     playlistId: String,
     playlistName: String,
     songs: List<SongItem>,
   ) {
-    database?.withTransaction {
+    val db = database ?: return
+
+    // A playlist the user kept is theirs. The draft of a mix is written beside it, never over it:
+    // this is what turned a saved mix of eight songs into a rebuilt one of twenty-five.
+    val existing = runCatching { db.playlist(playlistId).firstOrNull() }.getOrNull()
+    if (existing?.playlist?.bookmarkedAt != null) return
+
+    db.withTransaction {
       clearPlaylist(playlistId)
       insert(
         PlaylistEntity(
