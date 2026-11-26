@@ -595,8 +595,8 @@ fun HomeScreen(
 
   val allLocalItems by viewModel.allLocalItems.collectAsState()
   val allYtItems by viewModel.allYtItems.collectAsState()
-  val tasteMix by tasteViewModel.mix.collectAsState()
-  val tasteSaving by tasteViewModel.saving.collectAsState()
+  val tasteMixes by tasteViewModel.mixes.collectAsState()
+  val tasteSavingId by tasteViewModel.savingId.collectAsState()
   val tasteKept by tasteViewModel.kept.collectAsState()
   val speedDialItems by viewModel.speedDialItems.collectAsState()
   val selectedChip by viewModel.selectedChip.collectAsState()
@@ -820,7 +820,7 @@ fun HomeScreen(
       similarRecommendations,
       homePage?.sections,
       explorePage?.moodAndGenres,
-      tasteMix,
+      tasteMixes,
       aiRecommendedPlaylist,
       isPodcastPage,
       selectedChip
@@ -843,7 +843,7 @@ fun HomeScreen(
       }
 
       if (showSpeedDial && speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
-      if (tasteMix != null) list.add(HomeSection.TasteMix)
+      if (tasteMixes.isNotEmpty()) list.add(HomeSection.TasteMix)
       if (aiRecommendedPlaylist != null && aiRecommendedPlaylist!!.second.isNotEmpty())
         list.add(HomeSection.AiRecommendations)
       if (heroSongs.isNotEmpty() && selectedChip == null) list.add(HomeSection.HeroCarousel)
@@ -1662,8 +1662,7 @@ fun HomeScreen(
                 }
             }
             is HomeSection.TasteMix -> {
-              val mix = tasteMix
-              if (mix != null) {
+              if (tasteMixes.isNotEmpty()) {
                 item(key = "taste_mix_title") {
                   NavigationTitle(
                     title = "For you",
@@ -1672,16 +1671,19 @@ fun HomeScreen(
                   )
                 }
 
-                item(key = "taste_mix_card") {
-                  ForYouCard(
-                    coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
-                    songCount = mix.suggestions.size,
-                    kept = tasteKept,
-                    saving = tasteSaving,
-                    onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
-                    onSave = { tasteViewModel.save() },
-                    modifier = Modifier.animateItem()
-                  )
+                tasteMixes.forEach { mix ->
+                  item(key = "taste_mix_card_${mix.playlistId}") {
+                    ForYouCard(
+                      title = mix.playlistName,
+                      coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
+                      songCount = mix.suggestions.size,
+                      kept = mix.playlistId in tasteKept,
+                      saving = tasteSavingId == mix.playlistId,
+                      onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
+                      onSave = { tasteViewModel.save(mix.playlistId) },
+                      modifier = Modifier.animateItem()
+                    )
+                  }
                 }
               }
             }

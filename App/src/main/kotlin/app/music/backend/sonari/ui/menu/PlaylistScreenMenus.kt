@@ -32,7 +32,8 @@ fun LocalPlaylistMenu(
   onExport: () -> Unit,
   onModifyWithAi: () -> Unit,
   onQueue: () -> Unit,
-  onDismiss: () -> Unit
+  onDismiss: () -> Unit,
+  onNotInterested: (() -> Unit)? = null
 ) {
   val listenTogetherManager = LocalListenTogetherManager.current
   val isGuest = listenTogetherManager?.isGuestPlaybackRestricted == true
@@ -66,6 +67,20 @@ fun LocalPlaylistMenu(
   val isYouTubePlaylist = playlist.playlist.browseId != null
 
   val menuItems = buildList {
+    if (onNotInterested != null) {
+      add(
+        Material3MenuItemData(
+          title = { Text("Not interested") },
+          description = { Text("Never suggest these songs again") },
+          icon = { Icon(painter = painterResource(R.drawable.close), contentDescription = null) },
+          onClick = {
+            onNotInterested.invoke()
+            onDismiss()
+          }
+        )
+      )
+    }
+
     add(
       Material3MenuItemData(
         title = { Text(stringResource(R.string.edit)) },

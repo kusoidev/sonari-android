@@ -181,6 +181,7 @@ fun LocalPlaylistScreen(
   navController: NavController,
   scrollBehavior: TopAppBarScrollBehavior,
   viewModel: LocalPlaylistViewModel = hiltViewModel(),
+  tasteViewModel: app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel = hiltViewModel(),
 ) {
   val context = LocalContext.current
   val menuState = LocalMenuState.current
@@ -497,6 +498,15 @@ fun LocalPlaylistScreen(
                 playlist = playlist,
                 songs = songs,
                 onShuffle = shufflePlaylist,
+                onNotInterested = {
+                  tasteViewModel.notInterested(
+                    playlist.id,
+                    songs.map { item ->
+                      item.song.song.title to item.song.artists.joinToString(", ") { artist -> artist.name }
+                    }
+                  )
+                  navController.navigateUp()
+                },
                 onShowEditDialog = { showEditDialog = true },
                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                 onshowDeletePlaylistDialog = { showDeletePlaylistDialog = true },
@@ -890,6 +900,7 @@ fun LocalPlaylistHeader(
   playlist: Playlist,
   songs: List<PlaylistSong>,
   onShuffle: () -> Unit,
+  onNotInterested: () -> Unit,
   onShowEditDialog: () -> Unit,
   onShowRemoveDownloadDialog: () -> Unit,
   onshowDeletePlaylistDialog: () -> Unit,
@@ -1310,6 +1321,7 @@ fun LocalPlaylistHeader(
             LocalPlaylistMenu(
               playlist = playlist,
               songs = songs,
+              onNotInterested = onNotInterested,
               context = context,
               downloadState = downloadState,
               onEdit = onShowEditDialog,

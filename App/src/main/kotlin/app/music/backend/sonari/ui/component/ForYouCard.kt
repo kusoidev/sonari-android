@@ -31,6 +31,7 @@ import coil3.compose.AsyncImage
  */
 @Composable
 fun ForYouCard(
+  title: String = "For you",
   coverUrl: String?,
   songCount: Int,
   kept: Boolean,
@@ -61,7 +62,7 @@ fun ForYouCard(
 
     Column(modifier = Modifier.weight(1f)) {
       Text(
-        text = "For you",
+        text = title,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface,

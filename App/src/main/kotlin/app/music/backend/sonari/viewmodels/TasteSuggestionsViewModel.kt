@@ -1,101 +1,51 @@
 package app.music.backend.sonari.viewmodels
 
-import android.content.Context
-import androidx.core.net.toUri
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.media3.exoplayer.offline.DownloadRequest
-import androidx.media3.exoplayer.offline.DownloadService
-import app.music.backend.sonari.constants.AutoDownloadPlaylistsKey
-import app.music.backend.sonari.generate.LocalTasteEngine
 import app.music.backend.sonari.generate.TasteMix
-import app.music.backend.sonari.playback.ExoDownloadService
+import app.music.backend.sonari.generate.TasteMixRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
-import kotlin.random.Random
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Keeps the "For you" playlist built and downloaded on its own, so opening the app finds a playlist
- * rather than a row of loose songs. Downloads are skipped only when the setting turns them off.
+ * Hands the screens the mixes the repository keeps: they are built on their own, never downloaded
+ * until the user asks for it, and can be kept, or dropped as "not interested".
  */
 @HiltViewModel
 class TasteSuggestionsViewModel @Inject constructor(
-  private val localTasteEngine: LocalTasteEngine,
-  @ApplicationContext private val context: Context,
-  private val dataStore: DataStore<Preferences>,
+  private val repository: TasteMixRepository,
 ) : ViewModel() {
-  private val _mix = MutableStateFlow<TasteMix?>(null)
-  val mix: StateFlow<TasteMix?> = _mix.asStateFlow()
+  val mixes: StateFlow<List<TasteMix>> = repository.mixes
+  val loading: StateFlow<Boolean> = repository.loading
 
-  private val _loading = MutableStateFlow(true)
-  val loading: StateFlow<Boolean> = _loading.asStateFlow()
+  private val _savingId = MutableStateFlow<String?>(null)
+  val savingId: StateFlow<String?> = _savingId.asStateFlow()
 
-  private val _saving = MutableStateFlow(false)
-  val saving: StateFlow<Boolean> = _saving.asStateFlow()
-
-  private val _kept = MutableStateFlow(false)
-  val kept: StateFlow<Boolean> = _kept.asStateFlow()
-
-  private var job: Job? = null
+  private val _kept = MutableStateFlow<Set<String>>(emptySet())
+  val kept: StateFlow<Set<String>> = _kept.asStateFlow()
 
   init {
-    load()
+    viewModelScope.launch { repository.refresh() }
   }
 
-  fun load(force: Boolean = false) {
-    if (job?.isActive == true) return
-    if (!force && _mix.value != null) return
-
-    job =
-      viewModelScope.launch {
-        _loading.value = true
-        val size = Random.nextInt(MinSongs, MaxSongs + 1)
-        val built = localTasteEngine.build(size)
-        _mix.value = built
-        _loading.value = false
-        if (built != null) download(built)
-      }
+  fun refresh() {
+    viewModelScope.launch { repository.refresh(force = true) }
   }
 
-  /** Keeps the built playlist in the playlists list. */
-  fun save() {
-    if (_mix.value == null || _saving.value) return
+  fun save(playlistId: String) {
+    if (playlistId in _kept.value) return
     viewModelScope.launch {
-      _saving.value = true
-      if (localTasteEngine.keep()) _kept.value = true
-      _saving.value = false
+      _savingId.value = playlistId
+      if (repository.keep(playlistId)) _kept.value = _kept.value + playlistId
+      _savingId.value = null
     }
   }
 
-  private suspend fun download(mix: TasteMix) {
-    val auto =
-      runCatching { dataStore.data.first()[AutoDownloadPlaylistsKey] }.getOrNull() ?: true
-    if (!auto) return
-
-    mix.suggestions.forEach { suggestion ->
-      val id = suggestion.song.id
-      // Only YouTube ids can go through the app's downloader; SoundCloud ones are skipped.
-      if (id.length != 11) return@forEach
-      val request =
-        DownloadRequest.Builder(id, id.toUri())
-          .setCustomCacheKey(id)
-          .setData(suggestion.song.title.toByteArray())
-          .build()
-      DownloadService.sendAddDownload(context, ExoDownloadService::class.java, request, false)
-    }
-  }
-
-  companion object {
-    const val MinSongs = 5
-    const val MaxSongs = 50
+  fun notInterested(playlistId: String, tracks: List<Pair<String, String>>) {
+    viewModelScope.launch { repository.notInterested(playlistId, tracks) }
   }
 }

@@ -6,6 +6,7 @@ import app.music.backend.sonari.db.MusicDatabase
 import app.music.backend.sonari.db.daos.RecommendationExclusionDao
 import app.music.backend.sonari.db.daos.SongPlayStatsDao
 import app.music.backend.sonari.db.entities.PlaylistEntity
+import app.music.backend.sonari.db.entities.RecommendationExclusionEntity
 import app.music.backend.sonari.db.entities.PlaylistSongMap
 import app.music.backend.sonari.db.entities.Song
 import app.music.backend.sonari.db.entities.SongPlayStatsEntity
@@ -34,6 +35,15 @@ private const val YOUTUBE_ID_LENGTH = 11
 /** The playlist the suggestions live in, built on its own and kept only when the user saves it. */
 const val ForYouPlaylistId = "local_for_you"
 const val ForYouPlaylistName = "For you"
+
+/** How many mixes the app keeps ready; each grows from a different seed. */
+const val ForYouMixCount = 3
+
+private fun mixPlaylistId(index: Int): String =
+  if (index == 0) ForYouPlaylistId else "$ForYouPlaylistId$index"
+
+private fun mixPlaylistName(index: Int, seedTitle: String): String =
+  if (index == 0) ForYouPlaylistName else "$ForYouPlaylistName: $seedTitle"
 
 private val MORNING = 6..11
 private val AFTERNOON = 12..17
@@ -143,20 +153,66 @@ open class LocalTasteEngine @Inject constructor(
       }
     }
 
-  /** The mix, saved as the playlist the suggestions live in, ready to open. */
-  open suspend fun build(count: Int = MAX_SUGGESTIONS): TasteMix? =
+  /**
+   * Builds a few mixes and saves each as its own playlist: one grown from the song played most,
+   * the others from the songs after it, so the three differ instead of repeating the same list.
+   */
+  open suspend fun buildMixes(count: Int = MAX_SUGGESTIONS): List<TasteMix> =
     withContext(Dispatchers.IO) {
-      if (database == null) return@withContext null
-      val suggestions = suggest(count)
-      if (suggestions.isEmpty()) return@withContext null
-      persistPlaylist(ForYouPlaylistId, ForYouPlaylistName, suggestions.map { it.song })
-      TasteMix(ForYouPlaylistId, ForYouPlaylistName, suggestions)
+      if (database == null) return@withContext emptyList()
+
+      val seeds = loadTasteSeeds()
+      if (seeds.isEmpty()) return@withContext emptyList()
+
+      val exclusions = recommendationExclusionDao.getAll().map { it.trackKey }.toMutableSet()
+      val eligible = seeds.filter { it.key !in exclusions }
+      if (eligible.isEmpty()) return@withContext emptyList()
+
+      val mixes = mutableListOf<TasteMix>()
+      eligible.take(ForYouMixCount).forEachIndexed { index, seed ->
+        val suggestions = buildSuggestions(listOf(seed), exclusions, count)
+        if (suggestions.isEmpty()) return@forEachIndexed
+
+        // What one mix already used is not offered again by the next.
+        exclusions += suggestions.map { it.key }
+
+        val playlistId = mixPlaylistId(index)
+        val playlistName = mixPlaylistName(index, seed.title)
+        persistPlaylist(playlistId, playlistName, suggestions.map { it.song })
+        mixes += TasteMix(playlistId, playlistName, suggestions)
+      }
+
+      mixes
     }
 
+  /** Remembers that these songs are not wanted, so no mix offers them again. */
+  open suspend fun exclude(tracks: List<Pair<String, String>>) = withContext(Dispatchers.IO) {
+    if (tracks.isEmpty()) return@withContext
+    val now = System.currentTimeMillis()
+    recommendationExclusionDao.upsertAll(
+      tracks.map { (title, artist) ->
+        RecommendationExclusionEntity(
+          trackKey = trackKeyOf(title, artist),
+          excludedAtMillis = now,
+          trackName = title,
+          artistName = artist,
+        )
+      }
+    )
+  }
+
+  /** Drops a saved mix from the library when the user says it is not for them. */
+  open suspend fun forget(playlistId: String) = withContext(Dispatchers.IO) {
+    val db = database ?: return@withContext
+    val playlist = runCatching { db.playlist(playlistId).firstOrNull() }.getOrNull()
+      ?: return@withContext
+    db.withTransaction { delete(playlist.playlist) }
+  }
+
   /** Keeps the built playlist in the playlists list; before this it only exists on its own. */
-  open suspend fun keep(): Boolean = withContext(Dispatchers.IO) {
+  open suspend fun keep(playlistId: String): Boolean = withContext(Dispatchers.IO) {
     val db = database ?: return@withContext false
-    val playlist = runCatching { db.playlist(ForYouPlaylistId).firstOrNull() }.getOrNull()
+    val playlist = runCatching { db.playlist(playlistId).firstOrNull() }.getOrNull()
       ?: return@withContext false
     db.withTransaction {
       update(playlist.playlist.copy(bookmarkedAt = java.time.LocalDateTime.now()))

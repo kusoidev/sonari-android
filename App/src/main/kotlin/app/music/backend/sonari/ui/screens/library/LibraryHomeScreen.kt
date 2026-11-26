@@ -110,8 +110,8 @@ fun LibraryHomeScreen(
   val listState = rememberLazyListState()
   val haptic = LocalHapticFeedback.current
 
-  val tasteMix by tasteViewModel.mix.collectAsState()
-  val tasteSaving by tasteViewModel.saving.collectAsState()
+  val tasteMixes by tasteViewModel.mixes.collectAsState()
+  val tasteSavingId by tasteViewModel.savingId.collectAsState()
   val tasteKept by tasteViewModel.kept.collectAsState()
 
   val current = mediaMetadata
@@ -254,18 +254,21 @@ fun LibraryHomeScreen(
       }
     }
 
-    tasteMix?.let { mix ->
+    if (tasteMixes.isNotEmpty()) {
       item(key = "for_you_header") { SectionHeader(title = "For you") }
 
-      item(key = "for_you_card") {
-        ForYouCard(
-          coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
-          songCount = mix.suggestions.size,
-          kept = tasteKept,
-          saving = tasteSaving,
-          onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
-          onSave = { tasteViewModel.save() },
-        )
+      tasteMixes.forEach { mix ->
+        item(key = "for_you_card_${mix.playlistId}") {
+          ForYouCard(
+            title = mix.playlistName,
+            coverUrl = mix.suggestions.firstOrNull()?.song?.thumbnail,
+            songCount = mix.suggestions.size,
+            kept = mix.playlistId in tasteKept,
+            saving = tasteSavingId == mix.playlistId,
+            onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
+            onSave = { tasteViewModel.save(mix.playlistId) },
+          )
+        }
       }
     }
 
