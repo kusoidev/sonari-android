@@ -128,8 +128,8 @@ fun LastFMSettingsScreen(navController: NavController) {
         Column {
           Text(
             text =
-              "Sonari cannot play from SoundCloud, so its tracks only widen what the taste mix finds. " +
-                "Paste a client ID to switch it on, or clear the field to switch it off.",
+              "SoundCloud needs a client ID to answer: paste one and its tracks join the taste mix " +
+                "and play from SoundCloud itself. Clear the field to switch it off.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
@@ -395,8 +395,8 @@ fun LastFMSettingsScreen(navController: NavController) {
               title = { Text("SoundCloud client ID") },
               description = {
                 Text(
-                  if (soundCloudClientId.isBlank()) "Off: only YouTube Music, Last.fm and Spotify suggest"
-                  else "On: SoundCloud suggests too"
+                  if (soundCloudClientId.isBlank()) "Off: YouTube Music, Last.fm and Spotify only"
+                  else "On: SoundCloud suggests and plays too"
                 )
               },
               trailingContent = {

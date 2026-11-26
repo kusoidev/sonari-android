@@ -256,6 +256,8 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
 
   @Inject lateinit var widgetManager: app.music.backend.sonari.widget.SonariWidgetManager
 
+  @Inject lateinit var externalMediaStreams: ExternalMediaStreams
+
   @Inject
   lateinit var listenTogetherManager: app.music.backend.sonari.listentogether.ListenTogetherManager
 
@@ -4167,6 +4169,22 @@ class MusicService : MediaLibraryService(), Player.Listener, PlaybackStatsListen
     return ResolvingDataSource.Factory(DefaultDataSource.Factory(this, createCacheDataSource())) {
       dataSpec ->
       val mediaId = dataSpec.key ?: error("No media id")
+
+      // SoundCloud and Spotify have no YouTube video behind them: their own audio is streamed here.
+      if (externalMediaStreams.isExternal(mediaId)) {
+        val stream =
+          externalMediaStreams.cached(mediaId)
+            ?: runBlocking(Dispatchers.IO) { externalMediaStreams.resolve(mediaId) }
+        if (stream == null) {
+          throw androidx.media3.common.PlaybackException(
+            "This track has no audio left on its service",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+          )
+        }
+        return@Factory stream.resolve(dataSpec)
+      }
+
       if (mediaId.isLocalMediaId()) {
         val localUri = android.net.Uri.parse(mediaId)
         try {

@@ -54,7 +54,10 @@ import app.music.backend.sonari.LocalPlayerConnection
 import app.music.backend.sonari.R
 import app.music.backend.sonari.generate.TasteSuggestion
 import app.music.backend.sonari.innertube.models.WatchEndpoint
+import app.music.backend.sonari.extensions.toMediaItem
 import app.music.backend.sonari.models.toMediaMetadata
+import app.music.backend.sonari.playback.isProviderMediaId
+import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.playback.queues.YouTubeQueue
 import app.music.backend.sonari.viewmodels.GenerateUiState
 import app.music.backend.sonari.viewmodels.GenerateViewModel
@@ -362,12 +365,24 @@ fun GenerateScreen(
               TasteSuggestionRow(
                 suggestion = suggestion,
                 onClick = {
-                  playerConnection?.playQueue(
-                    YouTubeQueue(
-                      suggestion.song.endpoint ?: WatchEndpoint(videoId = suggestion.song.id),
-                      suggestion.song.toMediaMetadata(),
+                  val song = suggestion.song
+                  if (song.id.isProviderMediaId()) {
+                    // Spotify and SoundCloud tracks play their own audio, not a YouTube copy.
+                    playerConnection?.playQueue(
+                      ListQueue(
+                        title = song.title,
+                        items = listOf(song.toMediaItem()),
+                        startIndex = 0,
+                      )
                     )
-                  )
+                  } else {
+                    playerConnection?.playQueue(
+                      YouTubeQueue(
+                        song.endpoint ?: WatchEndpoint(videoId = song.id),
+                        song.toMediaMetadata(),
+                      )
+                    )
+                  }
                 },
               )
             }
