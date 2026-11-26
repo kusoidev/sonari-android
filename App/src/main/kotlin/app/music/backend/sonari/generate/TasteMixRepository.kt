@@ -45,10 +45,29 @@ constructor(
 
   /** Never offer these songs again, drop the playlist they came from and build fresh mixes. */
   suspend fun notInterested(playlistId: String, tracks: List<Pair<String, String>>) {
-    if (tracks.isNotEmpty()) engine.exclude(tracks)
+    if (tracks.isNotEmpty()) runCatching { engine.exclude(tracks, excludeArtists = true) }
     _mixes.value = _mixes.value.filterNot { it.playlistId == playlistId }
     runCatching { engine.forget(playlistId) }
     refresh(force = true)
+  }
+
+  /** Never offer these songs, nor anything else by their artists, then build fresh mixes. */
+  suspend fun neverRecommend(tracks: List<Pair<String, String>>) {
+    if (tracks.isEmpty()) return
+    runCatching { engine.exclude(tracks, excludeArtists = true) }
+    refresh(force = true)
+  }
+
+  /** Grows one mix with more of what it already holds, and reflects that on screen straight away. */
+  suspend fun moreLikeThis(playlistId: String) {
+    val added = runCatching { engine.moreLikeThis(playlistId) }.getOrDefault(emptyList())
+    if (added.isEmpty()) return
+
+    _mixes.value =
+      _mixes.value.map { mix ->
+        if (mix.playlistId != playlistId) mix
+        else mix.copy(suggestions = (mix.suggestions + added).distinctBy { it.key })
+      }
   }
 
   private companion object {

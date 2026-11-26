@@ -98,15 +98,17 @@ open class RecommendationEngine @Inject constructor(
           .orEmpty()
 
         val out = mutableListOf<TasteSuggestion>()
-        for (track in tracks.take(4)) {
-          if (trackKeyOf(track.name, track.artist) in exclusions) continue
-          val song = resolvePlayableSong(track.name, track.artist, hideExplicit = false) ?: continue
+        tracks.take(4).forEachIndexed { index, track ->
+          if (trackKeyOf(track.name, track.artist) in exclusions) return@forEachIndexed
+          // The search must land on that artist: a different act with the same title is no use.
+          val song = resolvePlayableSong(track.name, track.artist, hideExplicit = false)
+            ?: return@forEachIndexed
           out +=
             TasteSuggestion(
               song = song,
-              source = TasteSource.SOUNDS_LIKE,
+              source = TasteSource.SIMILAR_TRACK,
               reason = "Sounds like ${seed.title}",
-              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDS_LIKE),
+              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SIMILAR_TRACK) - index * RANK_DECAY,
             )
         }
         out
@@ -150,7 +152,7 @@ open class RecommendationEngine @Inject constructor(
     trackSuggestions + artistSuggestions
   }
 
-  /** A genre the user keeps playing lifts a candidate above the rest of its source. */
+  /** A genre the user keeps playing, or a long term artist, lifts a candidate above the rest. */
   override suspend fun adjustScores(
     suggestions: List<TasteSuggestion>,
   ): List<TasteSuggestion> {
@@ -158,17 +160,28 @@ open class RecommendationEngine @Inject constructor(
         genresRepository?.topGenres(12).orEmpty().map { it.genre.lowercase() }
       }
       .getOrDefault(emptyList())
-    if (topGenres.isEmpty()) return suggestions
+
+    val topArtists = runCatching { tasteProfileProvider.get()?.topArtistNames.orEmpty() }
+      .getOrDefault(emptyList())
+      .map { it.trim().lowercase() }
+      .filter { it.isNotEmpty() }
+
+    if (topGenres.isEmpty() && topArtists.isEmpty()) return suggestions
 
     return suggestions.map { suggestion ->
       val title = suggestion.song.title.lowercase()
       val artist = suggestion.song.artists.joinToString(" ") { it.name }.lowercase()
-      val matches =
-        topGenres.any { genre ->
-          genre.length > 2 && (title.contains(genre) || artist.contains(genre))
-        }
-      if (matches) suggestion.copy(score = suggestion.score + GENRE_MATCH_BONUS)
-      else suggestion
+      val artists = suggestion.song.artists.map { it.name.trim().lowercase() }
+
+      var score = suggestion.score
+      if (topGenres.any { genre -> genre.length > 2 && (title.contains(genre) || artist.contains(genre)) }) {
+        score += GENRE_MATCH_BONUS
+      }
+      if (topArtists.any { loved -> artists.any { it.isNotEmpty() && (it == loved || it.contains(loved)) } }) {
+        score += SIMILAR_ARTIST_BONUS
+      }
+
+      if (score != suggestion.score) suggestion.copy(score = score) else suggestion
     }
   }
 }

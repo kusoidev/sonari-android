@@ -1032,4 +1032,12 @@
     <string name="tag_year">Year</string>
     <string name="tag_saved">Tags saved to the file</string>
     <string name="tag_failed">Could not write the tags</string>
+
+    <!-- For you mixes -->
+    <string name="never_recommend">Never recommend these</string>
+    <string name="never_recommend_desc">Keeps these songs, and the artists behind them, out of every mix</string>
+    <string name="for_you_more_like">Recommend more like this</string>
+    <string name="for_you_more_like_desc">Grows this mix with more of the same</string>
+    <string name="for_you_never">Never recommend stuff like this</string>
+    <string name="for_you_never_desc">Bans this mix and rebuilds the others</string>
 </resources>

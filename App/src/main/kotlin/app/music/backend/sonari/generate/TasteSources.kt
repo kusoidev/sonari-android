@@ -27,7 +27,8 @@ import timber.log.Timber
 
 /**
  * More songs by an artist the user already plays, plus any artist another provider named as similar.
- * YouTube Music has no "artist songs" endpoint here, so the artist name is searched for songs.
+ * YouTube Music has no "artist songs" endpoint here, so the artist name is searched for songs, and
+ * every result is checked to really be by that artist before it is offered.
  */
 internal suspend fun collectArtistSuggestions(
   seeds: List<TasteSeed>,
@@ -37,7 +38,11 @@ internal suspend fun collectArtistSuggestions(
   maxArtists: Int = 4,
 ): List<TasteSuggestion> = coroutineScope {
   val fromSeeds = seeds.map { it.artist.trim() }.filter { it.isNotBlank() }
-  val artists = (fromSeeds + extraArtists.map { it.trim() }).filter { it.isNotBlank() }.distinct().take(maxArtists)
+  val artists =
+    (fromSeeds + extraArtists.map { it.trim() })
+      .filter { it.isNotBlank() }
+      .distinct()
+      .take(maxArtists)
 
   artists.map { artist ->
     async(Dispatchers.IO) {
@@ -49,15 +54,17 @@ internal suspend fun collectArtistSuggestions(
           ?.items
           ?.filterIsInstance<SongItem>()
           ?.filter { song ->
-            trackKeyOf(song.title, song.artists.joinToString(", ") { it.name }) !in exclusions
+            artistMatches(song, artist) &&
+              trackKeyOf(song.title, song.artists.joinToString(", ") { it.name }) !in exclusions
           }
+          ?.distinctBy { songKeyOf(it) }
           ?.take(perArtist)
-          ?.map { song ->
+          ?.mapIndexed { index, song ->
             TasteSuggestion(
               song = song,
               source = TasteSource.ARTIST,
               reason = "More from $artist",
-              score = baseScore,
+              score = baseScore - index * RANK_DECAY,
             )
           }
           .orEmpty()
@@ -82,28 +89,30 @@ internal suspend fun collectRadioSuggestions(
     next.items
       .filterIsInstance<SongItem>()
       .filter { song -> songKeyOf(song) !in exclusions }
+      .distinctBy { songKeyOf(it) }
       .take(4)
-      .forEach { song ->
+      .forEachIndexed { index, song ->
         out +=
           TasteSuggestion(
             song = song,
             source = TasteSource.SOUNDS_LIKE,
             reason = "Sounds like ${seed.title}",
-            score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDS_LIKE),
+            score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDS_LIKE) - index * RANK_DECAY,
           )
       }
 
     next.relatedEndpoint?.let { endpoint ->
       runCatching { YouTube.related(endpoint).getOrNull()?.songs.orEmpty() }.getOrDefault(emptyList())
         .filter { song -> songKeyOf(song) !in exclusions }
+        .distinctBy { songKeyOf(it) }
         .take(3)
-        .forEach { song ->
+        .forEachIndexed { index, song ->
           out +=
             TasteSuggestion(
               song = song,
               source = TasteSource.RADIO,
               reason = "Radio of ${seed.title}",
-              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.RADIO),
+              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.RADIO) - index * RANK_DECAY,
             )
         }
     }
@@ -111,9 +120,6 @@ internal suspend fun collectRadioSuggestions(
 
   return out
 }
-
-private fun songKeyOf(song: SongItem): String =
-  trackKeyOf(song.title, song.artists.joinToString(", ") { it.name })
 
 data class SoundCloudTrack(
   val id: String,
@@ -152,9 +158,9 @@ constructor(
         val anchor =
           search(clientId, "${seed.artist} ${seed.title}".trim(), limit = 3).firstOrNull() ?: continue
         val related = related(clientId, anchor.id, limit = 8)
-        for (track in related) {
-          if (out.size >= limit) break
-          if (track.id.isBlank() || track.title.isBlank()) continue
+        related.forEachIndexed { index, track ->
+          if (out.size >= limit) return@forEachIndexed
+          if (track.id.isBlank() || track.title.isBlank()) return@forEachIndexed
           out +=
             TasteSuggestion(
               song =
@@ -168,7 +174,7 @@ constructor(
                 ),
               source = TasteSource.SOUNDCLOUD,
               reason = "Found on SoundCloud near ${seed.title}",
-              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDCLOUD),
+              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDCLOUD) - index * RANK_DECAY,
             )
         }
       }

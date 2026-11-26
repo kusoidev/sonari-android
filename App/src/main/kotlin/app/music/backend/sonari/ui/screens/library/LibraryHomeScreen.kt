@@ -76,6 +76,8 @@ import app.music.backend.sonari.playback.isProviderMediaId
 import app.music.backend.sonari.playback.queues.ListQueue
 import app.music.backend.sonari.playback.queues.YouTubeQueue
 import app.music.backend.sonari.ui.component.ForYouCard
+import app.music.backend.sonari.ui.component.LocalMenuState
+import app.music.backend.sonari.ui.menu.ForYouMixMenu
 import app.music.backend.sonari.viewmodels.LibraryMixViewModel
 import app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel
 import kotlinx.coroutines.delay
@@ -113,6 +115,7 @@ fun LibraryHomeScreen(
   val tasteMixes by tasteViewModel.mixes.collectAsState()
   val tasteSavingId by tasteViewModel.savingId.collectAsState()
   val tasteKept by tasteViewModel.kept.collectAsState()
+  val menuState = LocalMenuState.current
 
   val current = mediaMetadata
   val hero =
@@ -267,6 +270,23 @@ fun LibraryHomeScreen(
             saving = tasteSavingId == mix.playlistId,
             onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
             onSave = { tasteViewModel.save(mix.playlistId) },
+            onLongClick = {
+              menuState.show {
+                ForYouMixMenu(
+                  onDismiss = { menuState.dismiss() },
+                  onMoreLikeThis = { tasteViewModel.moreLikeThis(mix.playlistId) },
+                  onNeverRecommend = {
+                    tasteViewModel.notInterested(
+                      mix.playlistId,
+                      mix.suggestions.map { suggestion ->
+                        suggestion.song.title to
+                          suggestion.song.artists.joinToString(", ") { it.name }
+                      },
+                    )
+                  },
+                )
+              }
+            },
           )
         }
       }

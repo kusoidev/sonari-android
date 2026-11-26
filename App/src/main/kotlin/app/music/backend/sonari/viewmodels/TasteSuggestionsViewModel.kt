@@ -48,4 +48,14 @@ class TasteSuggestionsViewModel @Inject constructor(
   fun notInterested(playlistId: String, tracks: List<Pair<String, String>>) {
     viewModelScope.launch { repository.notInterested(playlistId, tracks) }
   }
+
+  /** "Never recommend these": keeps the songs and their artists out of every future mix. */
+  fun neverRecommend(tracks: List<Pair<String, String>>) {
+    viewModelScope.launch { repository.neverRecommend(tracks) }
+  }
+
+  /** "Recommend more like this": grows one mix in place. */
+  fun moreLikeThis(playlistId: String) {
+    viewModelScope.launch { repository.moreLikeThis(playlistId) }
+  }
 }

@@ -14,6 +14,7 @@ import app.music.backend.sonari.models.toMediaMetadata
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,13 +38,79 @@ const val ForYouPlaylistId = "local_for_you"
 const val ForYouPlaylistName = "For you"
 
 /** How many mixes the app keeps ready; each grows from a different seed. */
-const val ForYouMixCount = 3
+const val ForYouMixCount = 4
+
+/** A mix with fewer songs than this is not worth a card, so another seed is tried instead. */
+const val MinMixSongs = 4
+
+/** How long a mix may grow to; its real size is picked at random inside that range each build. */
+const val MaxMixSongs = 50
+
+/** "Recommend more like this" adds this many songs to the mix it was asked about. */
+const val MoreLikeThisCount = 8
+
+/** A song already in a kept mix is the best seed there is, so it outweighs any listening stat. */
+private const val SimilarSeedScore = 12f
 
 private fun mixPlaylistId(index: Int): String =
   if (index == 0) ForYouPlaylistId else "$ForYouPlaylistId$index"
 
 private fun mixPlaylistName(index: Int, seedTitle: String): String =
   if (index == 0) ForYouPlaylistName else "$ForYouPlaylistName: $seedTitle"
+
+/** The artist keys among the exclusions, as [artistKeyOf] writes them. */
+internal fun excludedArtistKeys(entities: List<RecommendationExclusionEntity>): Set<String> =
+  entities
+    .asSequence()
+    .filter { it.trackKey.startsWith(ARTIST_KEY_PREFIX) }
+    .map { it.trackKey.removePrefix(ARTIST_KEY_PREFIX).trim().lowercase() }
+    .filter { it.isNotEmpty() }
+    .toSet()
+
+/**
+ * Groups the seeds into clusters of songs by one artist. Each cluster becomes one mix, so a mix
+ * sounds like a place in the user's taste instead of a single song's radio, and two mixes never
+ * stand on the same artist while others are still free.
+ */
+internal fun seedClusters(
+  seeds: List<TasteSeed>,
+  maxSeedsPerCluster: Int = 3,
+  limit: Int = ForYouMixCount * 2,
+): List<List<TasteSeed>> {
+  val used = mutableSetOf<String>()
+  val usedArtists = mutableSetOf<String>()
+  val clusters = mutableListOf<List<TasteSeed>>()
+
+  fun addCluster(seed: TasteSeed) {
+    val artist = seed.artist.trim().lowercase()
+    val companions =
+      seeds
+        .filter { other ->
+          other.key != seed.key &&
+            other.key !in used &&
+            other.artist.trim().lowercase() == artist
+        }
+        .take(maxSeedsPerCluster - 1)
+    val cluster = listOf(seed) + companions
+    cluster.forEach { used += it.key }
+    usedArtists += artist
+    clusters += cluster
+  }
+
+  seeds.forEach { seed ->
+    if (clusters.size >= limit || seed.key in used) return@forEach
+    if (seed.artist.trim().lowercase() in usedArtists) return@forEach
+    addCluster(seed)
+  }
+
+  // Few artists in the history: fill the remaining slots even though an artist repeats.
+  seeds.forEach { seed ->
+    if (clusters.size >= limit || seed.key in used) return@forEach
+    addCluster(seed)
+  }
+
+  return clusters
+}
 
 private val MORNING = 6..11
 private val AFTERNOON = 12..17
@@ -118,8 +185,15 @@ open class LocalTasteEngine @Inject constructor(
           )
         }
 
-        val exclusions = recommendationExclusionDao.getAll().map { it.trackKey }.toSet()
-        val eligibleSeeds = seeds.filter { it.key !in exclusions }.take(8)
+        val stored = recommendationExclusionDao.getAll()
+        val exclusions = stored.mapTo(mutableSetOf()) { it.trackKey }
+        val excludedArtists = excludedArtistKeys(stored)
+        val eligibleSeeds =
+          seeds
+            .filter { seed ->
+              seed.key !in exclusions && artistNamesOf(seed.artist).none { it in excludedArtists }
+            }
+            .take(8)
         if (eligibleSeeds.isEmpty()) {
           return@withContext Result.failure(
             IllegalStateException("All candidate tracks have been excluded")
@@ -154,30 +228,55 @@ open class LocalTasteEngine @Inject constructor(
     }
 
   /**
-   * Builds a few mixes and saves each as its own playlist: one grown from the song played most,
-   * the others from the songs after it, so the three differ instead of repeating the same list.
+   * Builds several mixes and saves each as its own playlist. Every mix grows from a cluster of
+   * songs by one artist the user plays, so each one is coherent on its own instead of being a
+   * single track's radio, and a song used by one mix is not repeated in the next.
    */
-  open suspend fun buildMixes(count: Int = MAX_SUGGESTIONS): List<TasteMix> =
+  open suspend fun buildMixes(count: Int = 0): List<TasteMix> =
     withContext(Dispatchers.IO) {
       if (database == null) return@withContext emptyList()
 
       val seeds = loadTasteSeeds()
       if (seeds.isEmpty()) return@withContext emptyList()
 
-      val exclusions = recommendationExclusionDao.getAll().map { it.trackKey }.toMutableSet()
-      val eligible = seeds.filter { it.key !in exclusions }
-      if (eligible.isEmpty()) return@withContext emptyList()
+      val stored = recommendationExclusionDao.getAll()
+      val exclusions = stored.mapTo(mutableSetOf()) { it.trackKey }
+      val excludedArtists = excludedArtistKeys(stored)
+      val affinity = artistAffinityOf(seeds)
+      val allowedMarkers = seeds.flatMapTo(mutableSetOf()) { junkMarkersIn(it.title) }
+      val knownKeys = loadKnownKeys()
+
+      val usable =
+        seeds.filter { seed ->
+          seed.key !in exclusions && artistNamesOf(seed.artist).none { it in excludedArtists }
+        }
+      if (usable.isEmpty()) return@withContext emptyList()
 
       val mixes = mutableListOf<TasteMix>()
-      eligible.take(ForYouMixCount).forEachIndexed { index, seed ->
-        val suggestions = buildSuggestions(listOf(seed), exclusions, count)
-        if (suggestions.isEmpty()) return@forEachIndexed
+      for (cluster in seedClusters(usable)) {
+        if (mixes.size >= ForYouMixCount) break
+
+        // Each mix is a different size, so the cards do not all read the same.
+        val target = if (count > 0) count else Random.nextInt(MinMixSongs, MaxMixSongs + 1)
+
+        val suggestions =
+          buildSuggestions(
+            eligibleSeeds = cluster,
+            exclusions = exclusions,
+            count = target,
+            artistAffinity = affinity,
+            excludedArtists = excludedArtists,
+            allowedMarkers = allowedMarkers,
+            knownKeys = knownKeys,
+          )
+        if (suggestions.size < MinMixSongs) continue
 
         // What one mix already used is not offered again by the next.
         exclusions += suggestions.map { it.key }
 
+        val index = mixes.size
         val playlistId = mixPlaylistId(index)
-        val playlistName = mixPlaylistName(index, seed.title)
+        val playlistName = mixPlaylistName(index, cluster.first().title)
         persistPlaylist(playlistId, playlistName, suggestions.map { it.song })
         mixes += TasteMix(playlistId, playlistName, suggestions)
       }
@@ -185,20 +284,111 @@ open class LocalTasteEngine @Inject constructor(
       mixes
     }
 
+  /**
+   * "Recommend more like this": grows a mix in place with songs that follow from what is already in
+   * it, leaving its own songs untouched.
+   */
+  open suspend fun moreLikeThis(
+    playlistId: String,
+    count: Int = MoreLikeThisCount,
+  ): List<TasteSuggestion> =
+    withContext(Dispatchers.IO) {
+      val db = database ?: return@withContext emptyList()
+      val existing =
+        runCatching { db.playlistSongs(playlistId).firstOrNull() }.getOrNull().orEmpty()
+      if (existing.isEmpty()) return@withContext emptyList()
+
+      val stored = recommendationExclusionDao.getAll()
+      val exclusions = stored.mapTo(mutableSetOf()) { it.trackKey }
+      val excludedArtists = excludedArtistKeys(stored)
+
+      val seeds =
+        existing.mapNotNull { row ->
+          val song = row.song.song
+          val artist = artistLineOf(row.song)
+          if (artist.isBlank()) return@mapNotNull null
+          TasteSeed(
+            key = trackKeyOf(song.title, artist),
+            title = song.title,
+            artist = artist,
+            videoId = song.id.takeIf { !song.isLocal && it.length == YOUTUBE_ID_LENGTH },
+            downloaded = song.isDownloaded,
+            score = SimilarSeedScore,
+            artworkUrl = song.thumbnailUrl,
+          )
+        }
+      if (seeds.isEmpty()) return@withContext emptyList()
+
+      // Everything already in the mix is off the table, or the "more" would be the same songs.
+      seeds.forEach { exclusions += it.key }
+
+      val suggestions =
+        buildSuggestions(
+            eligibleSeeds = seeds.take(6),
+            exclusions = exclusions,
+            count = count,
+            artistAffinity = artistAffinityOf(seeds),
+            excludedArtists = excludedArtists,
+            allowedMarkers = seeds.flatMapTo(mutableSetOf()) { junkMarkersIn(it.title) },
+          )
+          .filterNot { suggestion -> existing.any { it.song.id == suggestion.song.id } }
+      if (suggestions.isEmpty()) return@withContext emptyList()
+
+      db.withTransaction {
+        var position = (existing.maxOfOrNull { it.map.position } ?: -1) + 1
+        suggestions.forEach { suggestion ->
+          insert(suggestion.song.toMediaMetadata())
+          insert(
+            PlaylistSongMap(
+              playlistId = playlistId,
+              songId = suggestion.song.id,
+              position = position++,
+            )
+          )
+        }
+      }
+
+      suggestions
+    }
+
   /** Remembers that these songs are not wanted, so no mix offers them again. */
-  open suspend fun exclude(tracks: List<Pair<String, String>>) = withContext(Dispatchers.IO) {
+  open suspend fun exclude(
+    tracks: List<Pair<String, String>>,
+    excludeArtists: Boolean = false,
+  ) = withContext(Dispatchers.IO) {
     if (tracks.isEmpty()) return@withContext
     val now = System.currentTimeMillis()
-    recommendationExclusionDao.upsertAll(
-      tracks.map { (title, artist) ->
-        RecommendationExclusionEntity(
-          trackKey = trackKeyOf(title, artist),
-          excludedAtMillis = now,
-          trackName = title,
-          artistName = artist,
-        )
+
+    val rows =
+      tracks.flatMap { (title, artist) ->
+        buildList {
+          add(
+            RecommendationExclusionEntity(
+              trackKey = trackKeyOf(title, artist),
+              excludedAtMillis = now,
+              trackName = title,
+              artistName = artist,
+            )
+          )
+          // "Never anything like this" also covers the artist, who would otherwise come straight
+          // back through "more from" on the next build. Each name is banned on its own, so a
+          // duet's second artist is not let through by accident.
+          if (excludeArtists) {
+            artistNamesOf(artist).forEach { name ->
+              add(
+                RecommendationExclusionEntity(
+                  trackKey = artistKeyOf(name),
+                  excludedAtMillis = now,
+                  trackName = name,
+                  artistName = name,
+                )
+              )
+            }
+          }
+        }
       }
-    )
+
+    recommendationExclusionDao.upsertAll(rows.distinctBy { it.trackKey })
   }
 
   /** Drops a saved mix from the library when the user says it is not for them. */
@@ -230,8 +420,15 @@ open class LocalTasteEngine @Inject constructor(
         val seeds = loadTasteSeeds()
         if (seeds.isEmpty()) return@withContext emptyList()
 
-        val exclusions = recommendationExclusionDao.getAll().map { it.trackKey }.toSet()
-        val eligibleSeeds = seeds.filter { it.key !in exclusions }.take(8)
+        val stored = recommendationExclusionDao.getAll()
+        val exclusions = stored.mapTo(mutableSetOf()) { it.trackKey }
+        val excludedArtists = excludedArtistKeys(stored)
+        val eligibleSeeds =
+          seeds
+            .filter { seed ->
+              seed.key !in exclusions && artistNamesOf(seed.artist).none { it in excludedArtists }
+            }
+            .take(8)
         if (eligibleSeeds.isEmpty()) return@withContext emptyList()
 
         buildSuggestions(eligibleSeeds, exclusions, count)
@@ -247,8 +444,28 @@ open class LocalTasteEngine @Inject constructor(
     eligibleSeeds: List<TasteSeed>,
     exclusions: Set<String>,
     count: Int,
+    artistAffinity: Map<String, Float> = emptyMap(),
+    excludedArtists: Set<String> = emptySet(),
+    allowedMarkers: Set<String> = emptySet(),
+    knownKeys: Set<String>? = null,
   ): List<TasteSuggestion> {
     // Anything already played or kept (downloaded, liked, in the library) is not a suggestion.
+    val known = knownKeys ?: loadKnownKeys()
+
+    val raw = collectSuggestions(eligibleSeeds, exclusions, count)
+    val adjusted = runCatching { adjustScores(raw) }.getOrDefault(raw)
+    return assembleTasteMix(
+      raw = adjusted,
+      knownKeys = known,
+      count = count,
+      artistAffinity = artistAffinity,
+      excludedArtists = excludedArtists,
+      allowedMarkers = allowedMarkers,
+    )
+  }
+
+  /** Every song the user already has, as a set of track keys. Read once per build, not per mix. */
+  private suspend fun loadKnownKeys(): Set<String> {
     val knownKeys = mutableSetOf<String>()
     knownKeys += runCatching { songPlayStatsDao.getAllTrackKeys() }.getOrDefault(emptyList())
     runCatching { database?.allSongs()?.firstOrNull().orEmpty() }
@@ -257,10 +474,7 @@ open class LocalTasteEngine @Inject constructor(
     runCatching { database?.downloadedSongsByCreateDateAsc()?.firstOrNull().orEmpty() }
       .getOrDefault(emptyList())
       .forEach { song -> knownKeys += trackKeyOf(song.song.title, artistLineOf(song)) }
-
-    val raw = collectSuggestions(eligibleSeeds, exclusions, count)
-    val adjusted = runCatching { adjustScores(raw) }.getOrDefault(raw)
-    return assembleTasteMix(adjusted, knownKeys, count)
+    return knownKeys
   }
 
   /** Everything the user played, liked or kept offline, best first. */

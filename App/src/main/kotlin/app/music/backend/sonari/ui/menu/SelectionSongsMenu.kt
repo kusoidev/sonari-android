@@ -33,6 +33,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.offline.Download
@@ -57,6 +58,7 @@ import app.music.backend.sonari.ui.component.Material3MenuGroup
 import app.music.backend.sonari.ui.component.Material3MenuItemData
 import app.music.backend.sonari.ui.component.NewAction
 import app.music.backend.sonari.ui.component.NewActionGrid
+import app.music.backend.sonari.viewmodels.TasteSuggestionsViewModel
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -79,6 +81,7 @@ fun SelectionSongMenu(
   val syncUtils = LocalSyncUtils.current
   val listenTogetherManager = app.music.backend.sonari.LocalListenTogetherManager.current
   val isGuest = listenTogetherManager?.isGuestPlaybackRestricted == true
+  val tasteViewModel: TasteSuggestionsViewModel = hiltViewModel()
 
   val allInLibrary by remember {
     mutableStateOf(
@@ -457,6 +460,24 @@ fun SelectionSongMenu(
                       }
                     }
                   }
+                }
+              )
+            )
+            add(
+              Material3MenuItemData(
+                title = { Text(text = stringResource(R.string.never_recommend)) },
+                description = { Text(text = stringResource(R.string.never_recommend_desc)) },
+                icon = {
+                  Icon(painter = painterResource(R.drawable.close), contentDescription = null)
+                },
+                onClick = {
+                  onDismiss()
+                  tasteViewModel.neverRecommend(
+                    songSelection.map { song ->
+                      song.song.title to song.artists.joinToString(", ") { it.name }
+                    }
+                  )
+                  clearAction()
                 }
               )
             )

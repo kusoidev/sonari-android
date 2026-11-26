@@ -148,6 +148,7 @@ import app.music.backend.sonari.ui.component.shimmer.ShimmerHost
 import app.music.backend.sonari.ui.component.shimmer.TextPlaceholder
 import app.music.backend.sonari.ui.menu.AlbumMenu
 import app.music.backend.sonari.ui.menu.ArtistMenu
+import app.music.backend.sonari.ui.menu.ForYouMixMenu
 import app.music.backend.sonari.ui.menu.SongMenu
 import app.music.backend.sonari.ui.menu.YouTubeAlbumMenu
 import app.music.backend.sonari.ui.menu.YouTubeArtistMenu
@@ -1681,6 +1682,23 @@ fun HomeScreen(
                       saving = tasteSavingId == mix.playlistId,
                       onOpen = { navController.navigate("local_playlist/${mix.playlistId}") },
                       onSave = { tasteViewModel.save(mix.playlistId) },
+                      onLongClick = {
+                        menuState.show {
+                          ForYouMixMenu(
+                            onDismiss = { menuState.dismiss() },
+                            onMoreLikeThis = { tasteViewModel.moreLikeThis(mix.playlistId) },
+                            onNeverRecommend = {
+                              tasteViewModel.notInterested(
+                                mix.playlistId,
+                                mix.suggestions.map { suggestion ->
+                                  suggestion.song.title to
+                                    suggestion.song.artists.joinToString(", ") { it.name }
+                                },
+                              )
+                            },
+                          )
+                        }
+                      },
                       modifier = Modifier.animateItem()
                     )
                   }
