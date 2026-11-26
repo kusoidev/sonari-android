@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
@@ -119,28 +120,11 @@ constructor(
       _loading.value = true
       attemptedAt = System.currentTimeMillis()
       try {
-        // What is already on the phone stands first, before a single request is made: the row is
-        // there at once, and the mixes found over the network take over as they arrive.
-        if (_mixes.value.isEmpty()) {
-          val local =
-            try {
-              engine.buildLocalMixes()
-            } catch (e: CancellationException) {
-              throw e
-            } catch (e: Exception) {
-              Timber.e(e, "Building the For you mixes from the library failed")
-              emptyList()
-            }
-          if (local.isNotEmpty()) {
-            _mixes.value = local
-            builtAt = System.currentTimeMillis()
-            saveMixes(local)
-          }
-        }
-
+        // Bounded, so a source that never answers cannot leave the row building for good: what is
+        // there from the last build stays, and the next visit tries again.
         val built =
           try {
-            engine.buildMixes()
+            withTimeoutOrNull(BuildTimeoutMillis) { engine.buildMixes() }.orEmpty()
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
@@ -236,12 +220,15 @@ constructor(
   }
 
   private val cacheFile: File
-    get() = File(context.filesDir, "for_you_mixes.json")
+    get() = File(context.filesDir, "for_you_mixes_v2.json")
 
   private companion object {
     const val RefreshAfterMillis = 30L * 60 * 1000
 
     /** A build that left nothing is tried again this soon, so a play made meanwhile is picked up. */
     const val EmptyRetryMillis = 60L * 1000
+
+    /** No build may leave the row waiting longer than this; a source that never answers is dropped. */
+    const val BuildTimeoutMillis = 25_000L
   }
 }

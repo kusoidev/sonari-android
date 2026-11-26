@@ -19,11 +19,15 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
+
+/** No single request may hold a build up longer than this; a source that does not answer is dropped. */
+private const val SourceTimeoutMillis = 8_000L
 
 /**
  * More songs by an artist the user already plays, plus any artist another provider named as similar.
@@ -34,8 +38,8 @@ internal suspend fun collectArtistSuggestions(
   seeds: List<TasteSeed>,
   exclusions: Set<String>,
   extraArtists: List<String> = emptyList(),
-  perArtist: Int = 3,
-  maxArtists: Int = 4,
+  perArtist: Int = 5,
+  maxArtists: Int = 6,
 ): List<TasteSuggestion> = coroutineScope {
   val fromSeeds = seeds.map { it.artist.trim() }.filter { it.isNotBlank() }
   val artists =
@@ -48,27 +52,28 @@ internal suspend fun collectArtistSuggestions(
     async(Dispatchers.IO) {
       val seed = seeds.firstOrNull { it.artist.trim().equals(artist, ignoreCase = true) }
       val baseScore = (seed?.score ?: 4f) * SEED_WEIGHT + sourceBonusFor(TasteSource.ARTIST)
-      runCatching {
-        YouTube.search(artist, YouTube.SearchFilter.FILTER_SONG)
-          .getOrNull()
-          ?.items
-          ?.filterIsInstance<SongItem>()
-          ?.filter { song ->
-            artistMatches(song, artist) &&
-              trackKeyOf(song.title, song.artists.joinToString(", ") { it.name }) !in exclusions
-          }
-          ?.distinctBy { songKeyOf(it) }
-          ?.take(perArtist)
-          ?.mapIndexed { index, song ->
-            TasteSuggestion(
-              song = song,
-              source = TasteSource.ARTIST,
-              reason = "More from $artist",
-              score = baseScore - index * RANK_DECAY,
-            )
-          }
-          .orEmpty()
-      }.getOrDefault(emptyList())
+      withTimeoutOrNull(SourceTimeoutMillis) {
+          YouTube.search(artist, YouTube.SearchFilter.FILTER_SONG)
+            .getOrNull()
+            ?.items
+            ?.filterIsInstance<SongItem>()
+            ?.filter { song ->
+              artistMatches(song, artist) &&
+                trackKeyOf(song.title, song.artists.joinToString(", ") { it.name }) !in exclusions
+            }
+            ?.distinctBy { songKeyOf(it) }
+            ?.take(perArtist)
+            ?.mapIndexed { index, song ->
+              TasteSuggestion(
+                song = song,
+                source = TasteSource.ARTIST,
+                reason = "More from $artist",
+                score = baseScore - index * RANK_DECAY,
+              )
+            }
+            .orEmpty()
+        }
+        .orEmpty()
     }
   }.awaitAll().flatten()
 }
@@ -77,7 +82,7 @@ internal suspend fun collectArtistSuggestions(
 internal suspend fun collectRadioSuggestions(
   seeds: List<TasteSeed>,
   exclusions: Set<String>,
-  maxSeeds: Int = 5,
+  maxSeeds: Int = 8,
 ): List<TasteSuggestion> = coroutineScope {
   // Every seed is asked at once: one after another, five seeds meant ten requests one behind the
   // other, and the row waited on all of them.
@@ -87,49 +92,51 @@ internal suspend fun collectRadioSuggestions(
     .map { seed ->
       async(Dispatchers.IO) {
         val videoId = seed.videoId ?: return@async emptyList()
-        val next =
-          runCatching { YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull() }.getOrNull()
-            ?: return@async emptyList()
+        withTimeoutOrNull(SourceTimeoutMillis) {
+            val next = YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull()
+              ?: return@withTimeoutOrNull emptyList()
 
-        val out = mutableListOf<TasteSuggestion>()
+            val out = mutableListOf<TasteSuggestion>()
 
-        next.items
-          .filterIsInstance<SongItem>()
-          .filter { song -> songKeyOf(song) !in exclusions }
-          .distinctBy { songKeyOf(it) }
-          .take(4)
-          .forEachIndexed { index, song ->
-            out +=
-              TasteSuggestion(
-                song = song,
-                source = TasteSource.SOUNDS_LIKE,
-                reason = "Sounds like ${seed.title}",
-                score =
-                  seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDS_LIKE) -
-                    index * RANK_DECAY,
-              )
-          }
+            next.items
+              .filterIsInstance<SongItem>()
+              .filter { song -> songKeyOf(song) !in exclusions }
+              .distinctBy { songKeyOf(it) }
+              .take(8)
+              .forEachIndexed { index, song ->
+                out +=
+                  TasteSuggestion(
+                    song = song,
+                    source = TasteSource.SOUNDS_LIKE,
+                    reason = "Sounds like ${seed.title}",
+                    score =
+                      seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SOUNDS_LIKE) -
+                        index * RANK_DECAY,
+                  )
+              }
 
-        next.relatedEndpoint?.let { endpoint ->
-          runCatching { YouTube.related(endpoint).getOrNull()?.songs.orEmpty() }
-            .getOrDefault(emptyList())
-            .filter { song -> songKeyOf(song) !in exclusions }
-            .distinctBy { songKeyOf(it) }
-            .take(3)
-            .forEachIndexed { index, song ->
-              out +=
-                TasteSuggestion(
-                  song = song,
-                  source = TasteSource.RADIO,
-                  reason = "Radio of ${seed.title}",
-                  score =
-                    seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.RADIO) -
-                      index * RANK_DECAY,
-                )
+            next.relatedEndpoint?.let { endpoint ->
+              runCatching { YouTube.related(endpoint).getOrNull()?.songs.orEmpty() }
+                .getOrDefault(emptyList())
+                .filter { song -> songKeyOf(song) !in exclusions }
+                .distinctBy { songKeyOf(it) }
+                .take(6)
+                .forEachIndexed { index, song ->
+                  out +=
+                    TasteSuggestion(
+                      song = song,
+                      source = TasteSource.RADIO,
+                      reason = "Radio of ${seed.title}",
+                      score =
+                        seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.RADIO) -
+                          index * RANK_DECAY,
+                    )
+                }
             }
-        }
 
-        out
+            out
+          }
+          .orEmpty()
       }
     }
     .awaitAll()

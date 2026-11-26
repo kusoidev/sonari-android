@@ -259,12 +259,19 @@ fun LibraryHomeScreen(
       }
     }
 
-    if (tasteMixes.isNotEmpty() || tasteLoading) {
+    if (tasteMixes.isEmpty()) {
       item(key = "for_you_header") { SectionHeader(title = "For you") }
-    }
 
-    if (tasteMixes.isEmpty() && tasteLoading) {
-      item(key = "for_you_building") { ForYouBuildingCard() }
+      item(key = "for_you_building") {
+        if (tasteLoading) {
+          ForYouBuildingCard()
+        } else {
+          ForYouBuildingCard(
+            text = "Play a few songs, then tap to build",
+            onRetry = { tasteViewModel.refresh() },
+          )
+        }
+      }
     }
 
     if (tasteMixes.isNotEmpty()) {

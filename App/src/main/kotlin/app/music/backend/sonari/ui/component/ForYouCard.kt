@@ -1,6 +1,7 @@
 package app.music.backend.sonari.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
@@ -23,9 +25,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.music.backend.sonari.R
 import app.music.backend.sonari.ui.utils.resize
 import coil3.compose.AsyncImage
 
@@ -118,27 +122,42 @@ fun ForYouCard(
 }
 
 /**
- * Stands in for the row while the first build of the session runs, so "For you" is on screen from
- * the moment it is opened instead of appearing once the build has finished.
+ * Stands in for the row while a build runs, or when the last build found nothing to go on, so "For
+ * you" is on screen instead of the row vanishing. Tapping it when it is not building asks again.
  */
 @Composable
-fun ForYouBuildingCard(modifier: Modifier = Modifier) {
+fun ForYouBuildingCard(
+  modifier: Modifier = Modifier,
+  text: String = "Building from what you play",
+  onRetry: (() -> Unit)? = null,
+) {
+  val card =
+    modifier
+      .fillMaxWidth()
+      .padding(horizontal = 20.dp, vertical = 6.dp)
+      .clip(RoundedCornerShape(22.dp))
+      .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+      .padding(horizontal = 12.dp, vertical = 14.dp)
+
   Row(
-    modifier =
-      modifier
-        .fillMaxWidth()
-        .padding(horizontal = 20.dp, vertical = 6.dp)
-        .clip(RoundedCornerShape(22.dp))
-        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-        .padding(horizontal = 12.dp, vertical = 14.dp),
+    modifier = if (onRetry == null) card else card.clickable { onRetry() },
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Box(modifier = Modifier.size(84.dp), contentAlignment = Alignment.Center) {
-      CircularProgressIndicator(
-        modifier = Modifier.size(28.dp),
-        color = MaterialTheme.colorScheme.primary,
-        strokeWidth = 3.dp,
-      )
+      if (onRetry == null) {
+        CircularProgressIndicator(
+          modifier = Modifier.size(28.dp),
+          color = MaterialTheme.colorScheme.primary,
+          strokeWidth = 3.dp,
+        )
+      } else {
+        Icon(
+          painter = painterResource(R.drawable.tune),
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.size(28.dp),
+        )
+      }
     }
 
     Spacer(modifier = Modifier.width(16.dp))
@@ -152,7 +171,7 @@ fun ForYouBuildingCard(modifier: Modifier = Modifier) {
       )
       Spacer(modifier = Modifier.height(5.dp))
       Text(
-        text = "Building from what you play",
+        text = text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )

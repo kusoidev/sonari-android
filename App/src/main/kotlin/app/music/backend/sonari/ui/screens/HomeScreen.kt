@@ -1665,16 +1665,24 @@ fun HomeScreen(
                 }
             }
             is HomeSection.TasteMix -> {
-              if (tasteMixes.isEmpty() && tasteLoading) {
+              if (tasteMixes.isEmpty()) {
                 item(key = "taste_mix_building_title") {
                   NavigationTitle(
                     title = "For you",
-                    label = "built from what you play",
+                    label = if (tasteLoading) "built from what you play" else "not yet",
                     modifier = Modifier.animateItem()
                   )
                 }
                 item(key = "taste_mix_building") {
-                  ForYouBuildingCard(modifier = Modifier.animateItem())
+                  if (tasteLoading) {
+                    ForYouBuildingCard(modifier = Modifier.animateItem())
+                  } else {
+                    ForYouBuildingCard(
+                      modifier = Modifier.animateItem(),
+                      text = "Play a few songs, then tap to build",
+                      onRetry = { tasteViewModel.refresh() },
+                    )
+                  }
                 }
               }
 
