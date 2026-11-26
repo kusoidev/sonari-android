@@ -9,6 +9,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -19,7 +20,7 @@ const val SIMILAR_ARTIST_BONUS = 1.0f
 const val TAG_MATCH_BONUS = 1.5f
 const val GENRE_MATCH_BONUS = 1.0f
 
-private const val SOURCE_TIMEOUT_MILLIS = 20_000L
+private const val SOURCE_TIMEOUT_MILLIS = 8_000L
 
 fun scoreCandidateWithExternals(
   baseScore: Float,
@@ -55,8 +56,9 @@ open class RecommendationEngine @Inject constructor(
     seeds: List<TasteSeed>,
     exclusions: Set<String>,
     count: Int,
+    deep: Boolean,
   ): List<TasteSuggestion> = withContext(Dispatchers.IO) {
-    val base = runCatching { super.collectSuggestions(seeds, exclusions, count) }
+    val base = runCatching { super.collectSuggestions(seeds, exclusions, count, deep) }
       .getOrDefault(emptyList())
 
     val tasteProfile = runCatching { tasteProfileProvider.get() }.getOrNull()
@@ -64,14 +66,18 @@ open class RecommendationEngine @Inject constructor(
     val external = coroutineScope {
       val jobs = mutableListOf<Deferred<List<TasteSuggestion>>>()
 
-      jobs += async { collectLastFmSuggestions(seeds, exclusions, tasteProfile) }
+      jobs += async { collectLastFmSuggestions(seeds, exclusions, tasteProfile, deep) }
 
-      soundCloudTasteSource?.let { source ->
-        jobs +=
-          async {
-            withTimeoutOrNull(SOURCE_TIMEOUT_MILLIS) { source.suggest(seeds, limit = count / 3) }
-              .orEmpty()
-          }
+      // SoundCloud answers last and slowly, and only ever adds a handful of songs: it is asked for
+      // the mix the row leads with, not for every one of the four.
+      if (deep) {
+        soundCloudTasteSource?.let { source ->
+          jobs +=
+            async {
+              withTimeoutOrNull(SOURCE_TIMEOUT_MILLIS) { source.suggest(seeds, limit = count / 3) }
+                .orEmpty()
+            }
+        }
       }
 
       jobs.map { job -> runCatching { job.await() }.getOrDefault(emptyList()) }.flatten()
@@ -86,8 +92,9 @@ open class RecommendationEngine @Inject constructor(
     seeds: List<TasteSeed>,
     exclusions: Set<String>,
     tasteProfile: TasteProfile?,
+    deep: Boolean,
   ): List<TasteSuggestion> = coroutineScope {
-    val topSeeds = seeds.take(3)
+    val topSeeds = seeds.take(if (deep) 3 else 1)
     val similarArtistNames = mutableSetOf<String>()
 
     val similarTracks = topSeeds.map { seed ->
@@ -97,21 +104,33 @@ open class RecommendationEngine @Inject constructor(
           ?.getOrNull()
           .orEmpty()
 
-        val out = mutableListOf<TasteSuggestion>()
-        tracks.take(4).forEachIndexed { index, track ->
-          if (trackKeyOf(track.name, track.artist) in exclusions) return@forEachIndexed
-          // The search must land on that artist: a different act with the same title is no use.
-          val song = resolvePlayableSong(track.name, track.artist, hideExplicit = false)
-            ?: return@forEachIndexed
-          out +=
-            TasteSuggestion(
-              song = song,
-              source = TasteSource.SIMILAR_TRACK,
-              reason = "Sounds like ${seed.title}",
-              score = seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SIMILAR_TRACK) - index * RANK_DECAY,
-            )
-        }
-        out
+        // Every track is searched for at once: one after another, four of them held this seed up
+        // for four searches in a row, and three seeds meant twelve of them before the mix could
+        // even be assembled.
+        tracks
+          .take(if (deep) 4 else 2)
+          .mapIndexed { index, track ->
+            async(Dispatchers.IO) {
+              if (trackKeyOf(track.name, track.artist) in exclusions) return@async null
+              // The search must land on that artist: a different act with the same title is no use.
+              val song =
+                resolvePlayableSong(track.name, track.artist, hideExplicit = false)
+                  ?: return@async null
+              index to
+                TasteSuggestion(
+                  song = song,
+                  source = TasteSource.SIMILAR_TRACK,
+                  reason = "Sounds like ${seed.title}",
+                  score =
+                    seed.score * SEED_WEIGHT + sourceBonusFor(TasteSource.SIMILAR_TRACK) -
+                      index * RANK_DECAY,
+                )
+            }
+          }
+          .awaitAll()
+          .filterNotNull()
+          .sortedBy { (index, _) -> index }
+          .map { (_, suggestion) -> suggestion }
       }
     }
 
@@ -144,7 +163,7 @@ open class RecommendationEngine @Inject constructor(
               exclusions = exclusions,
               extraArtists = similarArtistNames.toList(),
               perArtist = 2,
-              maxArtists = 4,
+              maxArtists = if (deep) 4 else 2,
             )
           }
           .getOrDefault(emptyList())

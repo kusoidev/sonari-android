@@ -14,7 +14,6 @@ import app.music.backend.sonari.models.toMediaMetadata
 import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
 internal const val MAX_SUGGESTIONS = 25
@@ -46,14 +46,23 @@ const val ForYouMixCount = 4
 /** A mix with fewer songs than this is not worth a card; the target sits well above it. */
 const val MinMixSongs = 5
 
-/** What a mix is aimed at, up to [MaxMixSongs]: the sources gather well past it before it is cut. */
+/** What a mix is aimed at: the sources gather well past it before it is cut. */
 private const val TargetMixSongs = 25
-
-/** How long a mix may grow to; its real size is picked at random inside that range each build. */
-const val MaxMixSongs = 75
 
 /** "Recommend more like this" adds this many songs to the mix it was asked about. */
 const val MoreLikeThisCount = 8
+
+/** How many mixes one build may still grow from their own songs; each round asks every source. */
+private const val FillRounds = 1
+
+/** No single fill may hold a build up longer than this. */
+private const val FillTimeoutMillis = 8_000L
+
+/**
+ * No build may leave the row waiting longer than this. Every mix is handed over the moment it is
+ * saved, so a build that runs into this still leaves the mixes it had finished.
+ */
+private const val BuildTimeoutMillis = 45_000L
 
 /** A song already in a kept mix is the best seed there is, so it outweighs any listening stat. */
 private const val SimilarSeedScore = 12f
@@ -237,8 +246,20 @@ open class LocalTasteEngine @Inject constructor(
    * Builds several mixes and saves each as its own playlist. Every mix grows from a cluster of
    * songs by one artist the user plays, so each one is coherent on its own instead of being a
    * single track's radio, and a song used by one mix is not repeated in the next.
+   *
+   * [skipKeys] and [skipArtists] are what the row already holds. A refresh passes them so the new
+   * mixes stand on the next artists down the ranking: rotating the seeds instead brought up
+   * whatever sat further down it, which is not what the user listens to.
+   *
+   * [onMix] is handed every mix the moment it is saved, so the row can stand them in one by one
+   * instead of waiting for the last of the four.
    */
-  open suspend fun buildMixes(count: Int = 0): List<TasteMix> =
+  open suspend fun buildMixes(
+    count: Int = 0,
+    skipKeys: Set<String> = emptySet(),
+    skipArtists: Set<String> = emptySet(),
+    onMix: (suspend (List<TasteMix>) -> Unit)? = null,
+  ): List<TasteMix> =
     withContext(Dispatchers.IO) {
       if (database == null) return@withContext emptyList()
 
@@ -247,6 +268,8 @@ open class LocalTasteEngine @Inject constructor(
 
       val stored = recommendationExclusionDao.getAll()
       val exclusions = stored.mapTo(mutableSetOf()) { it.trackKey }
+      // What the row already offers is not offered again, so a refresh is not the same mixes.
+      exclusions += skipKeys
       val excludedArtists = excludedArtistKeys(stored)
       val affinity = artistAffinityOf(seeds)
       val allowedMarkers = seeds.flatMapTo(mutableSetOf()) { junkMarkersIn(it.title) }
@@ -262,18 +285,21 @@ open class LocalTasteEngine @Inject constructor(
         }
       if (usable.isEmpty()) return@withContext emptyList()
 
-      // The best seeds are shuffled before they are clustered, so a refresh asks other artists and
-      // brings other songs instead of the very mixes the last build left.
-      val pool = usable.take(24).shuffled()
+      // Best first, and never shuffled: a mix stands on the artists the user plays most. A refresh
+      // moves past the artists the row already holds instead, so the next mixes are the next best
+      // ones rather than whatever a shuffle happened to bring up.
+      val next =
+        usable.filter { seed ->
+          seed.key !in skipKeys && artistNamesOf(seed.artist).none { it in skipArtists }
+        }
+      val pool = (if (next.size >= ForYouMixCount) next else usable).take(24)
 
       val mixes = mutableListOf<TasteMix>()
-      for (cluster in seedClusters(pool)) {
-        if (mixes.size >= ForYouMixCount) break
+      var fillRounds = FillRounds
 
-        // A mix holds twenty-five songs, every one of them: the same size each time, so a build can
-        // fill it fully rather than cut it wherever the sources happened to run out.
-        val target = if (count > 0) count else TargetMixSongs
-
+      // One mix, from the first songs the sources found to its twenty-five. It is written out as it
+      // grows, so a mix is never half built: what the row opens is what the row showed.
+      suspend fun mixFor(cluster: List<TasteSeed>, index: Int, target: Int): TasteMix? {
         val suggestions =
           buildSuggestions(
             eligibleSeeds = cluster,
@@ -284,45 +310,64 @@ open class LocalTasteEngine @Inject constructor(
             allowedMarkers = allowedMarkers,
             knownKeys = knownKeys,
             freshArtists = freshArtists,
+            // The first mix is the one the row leads with, so it is the one asked every source.
+            deep = index == 0,
           )
-        if (suggestions.size < MinMixSongs) continue
+        if (suggestions.size < MinMixSongs) return null
 
-        val index = mixes.size
         val playlistId = freeDraftId(index)
         val playlistName = mixPlaylistName(index, cluster.first().title)
 
         // Short of twenty-five, the mix is grown from its own songs: the graph keeps going from
-        // what it has just found, round after round, until it holds the whole twenty-five.
+        // what it has just found until it holds the whole twenty-five. The rounds are shared by
+        // the whole build, since each one asks every source again: spent on four mixes one after
+        // the other, they were the very thing that made a build take minutes.
         var filled = suggestions
-        if (filled.size < target) {
+        if (filled.size < target && fillRounds > 0) {
           persistPlaylist(playlistId, playlistName, filled.map { it.song })
-          var quiet = 0
-          while (filled.size < target && quiet < 2) {
+          while (filled.size < target && fillRounds > 0) {
+            fillRounds--
             val added =
-              runCatching { moreLikeThis(playlistId, count = target - filled.size) }
-                .getOrDefault(emptyList())
-            if (added.isEmpty()) {
-              quiet++
-            } else {
-              quiet = 0
-              filled = (filled + added).distinctBy { it.key }
-              persistPlaylist(playlistId, playlistName, filled.map { it.song })
-            }
+              runCatching {
+                  withTimeoutOrNull(FillTimeoutMillis) {
+                    moreLikeThis(playlistId, count = target - filled.size)
+                  }
+                }
+                .getOrNull()
+                .orEmpty()
+            if (added.isEmpty()) break
+            filled = (filled + added).distinctBy { it.key }
+            persistPlaylist(playlistId, playlistName, filled.map { it.song })
           }
         }
 
-        // What one mix already used is not offered again by the next.
-        exclusions += filled.map { it.key }
-
         persistPlaylist(playlistId, playlistName, filled.map { it.song })
-        mixes += TasteMix(playlistId, playlistName, filled)
+        return TasteMix(playlistId, playlistName, filled)
+      }
+
+      // The build is bounded as a whole, and every mix is handed over the moment it is saved: a
+      // build that runs long leaves the mixes it finished rather than handing back nothing at all,
+      // which is what a refresh that never moved the row was doing.
+      withTimeoutOrNull(BuildTimeoutMillis) {
+        for (cluster in seedClusters(pool)) {
+          if (mixes.size >= ForYouMixCount) break
+
+          // A mix holds twenty-five songs, every one of them: the same size each time, so a build
+          // can fill it fully rather than cut it wherever the sources happened to run out.
+          val target = if (count > 0) count else TargetMixSongs
+          val mix = mixFor(cluster, index = mixes.size, target = target) ?: continue
+
+          // What one mix already used is not offered again by the next.
+          exclusions += mix.suggestions.map { it.key }
+          mixes += mix
+          onMix?.invoke(mixes.toList())
+        }
       }
 
       // A mix is meant to hold twenty-five songs. One that fell short is kept only when none
       // reached that many, so the row is never left with nothing at all.
       val full = mixes.filter { mix -> mix.suggestions.size >= TargetMixSongs }
-      if (full.isNotEmpty()) return@withContext full
-      mixes
+      if (full.isNotEmpty()) full else mixes
     }
 
   /**
@@ -371,6 +416,8 @@ open class LocalTasteEngine @Inject constructor(
             artistAffinity = artistAffinityOf(seeds),
             excludedArtists = excludedArtists,
             allowedMarkers = seeds.flatMapTo(mutableSetOf()) { junkMarkersIn(it.title) },
+            // A fill only needs a few more songs, and the build is waiting on it.
+            deep = false,
           )
           .filterNot { suggestion -> existing.any { it.song.id == suggestion.song.id } }
       if (suggestions.isEmpty()) return@withContext emptyList()
@@ -391,6 +438,21 @@ open class LocalTasteEngine @Inject constructor(
 
       suggestions
     }
+
+  /**
+   * The songs a mix already holds, read back from the playlist it was saved as. A row that comes
+   * from the last build's cache carries no songs of its own, and a refresh still has to know what
+   * not to offer again.
+   */
+  open suspend fun savedKeys(playlistId: String): List<String> = withContext(Dispatchers.IO) {
+    val db = database ?: return@withContext emptyList()
+    runCatching {
+        db.playlistSongs(playlistId).firstOrNull().orEmpty().map { row ->
+          trackKeyOf(row.song.song.title, artistLineOf(row.song))
+        }
+      }
+      .getOrDefault(emptyList())
+  }
 
   /** Remembers that these songs are not wanted, so no mix offers them again. */
   open suspend fun exclude(
@@ -432,8 +494,7 @@ open class LocalTasteEngine @Inject constructor(
     recommendationExclusionDao.upsertAll(rows.distinctBy { it.trackKey })
   }
 
-  /** Drops a saved mix from the library when the user says it is not for them. */
-  open suspend fun forget(playlistId: String) = withContext(Dispatchers.IO) {
+  /** Drops a saved mix from the library when the user says it is not for them. */  open suspend fun forget(playlistId: String) = withContext(Dispatchers.IO) {
     val db = database ?: return@withContext
     val playlist = runCatching { db.playlist(playlistId).firstOrNull() }.getOrNull()
       ?: return@withContext
@@ -490,11 +551,12 @@ open class LocalTasteEngine @Inject constructor(
     allowedMarkers: Set<String> = emptySet(),
     knownKeys: Set<String>? = null,
     freshArtists: Set<String> = emptySet(),
+    deep: Boolean = true,
   ): List<TasteSuggestion> {
     // Anything already played or kept (downloaded, liked, in the library) is not a suggestion.
     val known = knownKeys ?: loadKnownKeys()
 
-    val raw = collectSuggestions(eligibleSeeds, exclusions, count)
+    val raw = collectSuggestions(eligibleSeeds, exclusions, count, deep)
     val adjusted = runCatching { adjustScores(raw) }.getOrDefault(raw)
     return assembleTasteMix(
       raw = adjusted,
@@ -580,15 +642,26 @@ open class LocalTasteEngine @Inject constructor(
     return seeds.sortedByDescending { it.score }
   }
 
-  /** The sources the base engine knows: the artists themselves, "sounds like" and the radio. */
+  /**
+   * The sources the base engine knows: the artists themselves, "sounds like" and the radio.
+   *
+   * [deep] says how far they are asked: the first mix of a build is the one the row leads with, so
+   * it gets every source, while the ones behind it are asked less. Each source round was repeated
+   * for four mixes one after another, and that is what made a build take minutes.
+   */
   protected open suspend fun collectSuggestions(
     seeds: List<TasteSeed>,
     exclusions: Set<String>,
     count: Int,
+    deep: Boolean = true,
   ): List<TasteSuggestion> {
-    val similar = runCatching { collectRadioSuggestions(seeds, exclusions) }
+    val similar = runCatching {
+        collectRadioSuggestions(seeds, exclusions, maxSeeds = if (deep) 8 else 5)
+      }
       .getOrDefault(emptyList())
-    val artists = runCatching { collectArtistSuggestions(seeds, exclusions) }
+    val artists = runCatching {
+        collectArtistSuggestions(seeds, exclusions, maxArtists = if (deep) 6 else 3)
+      }
       .getOrDefault(emptyList())
     return similar + artists
   }

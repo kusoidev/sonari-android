@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -262,10 +263,16 @@ fun LibraryHomeScreen(
     // The row is always titled, whatever is in it, and its refresh asks the sources again: a mix
     // that came out short, or a library that has just been added to, can be rebuilt from here.
     item(key = "for_you_header") {
-      SectionHeader(title = "For you", onRefresh = { tasteViewModel.refresh() })
+      SectionHeader(
+        title = "For you",
+        onRefresh = { tasteViewModel.refresh() },
+        isRefreshing = tasteLoading,
+      )
     }
 
-    if (tasteMixes.isEmpty()) {
+    // A build under way stands its card under the mixes it has already handed over, so the row
+    // grows as the next ones land: the tap on refresh is then doing something on screen all along.
+    if (tasteMixes.isEmpty() || tasteLoading) {
       item(key = "for_you_building") {
         if (tasteLoading) {
           ForYouBuildingCard()
@@ -519,6 +526,7 @@ private fun SectionHeader(
   title: String,
   onClick: (() -> Unit)? = null,
   onRefresh: (() -> Unit)? = null,
+  isRefreshing: Boolean = false,
 ) {
   Row(
     verticalAlignment = Alignment.CenterVertically,
@@ -544,16 +552,26 @@ private fun SectionHeader(
     }
     if (onRefresh != null) {
       Spacer(Modifier.weight(1f))
-      Icon(
-        painter = painterResource(R.drawable.refresh),
-        contentDescription = "Refresh",
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier =
-          Modifier.size(36.dp)
-            .clip(androidx.compose.foundation.shape.CircleShape)
-            .clickable(onClick = onRefresh)
-            .padding(8.dp),
-      )
+      // While a build runs the button turns into a spinner: a refresh that only traded one set of
+      // mixes for another, with nothing moving on screen, looked like a tap that did nothing.
+      if (isRefreshing) {
+        CircularProgressIndicator(
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          strokeWidth = 2.dp,
+          modifier = Modifier.padding(8.dp).size(20.dp),
+        )
+      } else {
+        Icon(
+          painter = painterResource(R.drawable.refresh),
+          contentDescription = "Refresh",
+          tint = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier =
+            Modifier.size(36.dp)
+              .clip(androidx.compose.foundation.shape.CircleShape)
+              .clickable(onClick = onRefresh)
+              .padding(8.dp),
+        )
+      }
     }
   }
 }

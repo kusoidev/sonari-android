@@ -33,6 +33,9 @@ class TasteSuggestionsViewModel @Inject constructor(
   }
 
   fun refresh() {
+    // A build already under way is the one the tap asked for: asking again would queue a second
+    // one behind it and leave the row building twice as long for the same thing.
+    if (repository.loading.value) return
     viewModelScope.launch { repository.refresh(force = true) }
   }
 

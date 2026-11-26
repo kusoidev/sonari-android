@@ -163,8 +163,10 @@ constructor(
 ) {
   private val client =
     OkHttpClient.Builder()
-      .connectTimeout(15, TimeUnit.SECONDS)
-      .readTimeout(15, TimeUnit.SECONDS)
+      // A source that does not answer is dropped: a build the row is waiting on cannot sit on
+      // fifteen seconds of SoundCloud four times over.
+      .connectTimeout(5, TimeUnit.SECONDS)
+      .readTimeout(5, TimeUnit.SECONDS)
       .build()
 
   suspend fun suggest(seeds: List<TasteSeed>, limit: Int = 6): List<TasteSuggestion> =

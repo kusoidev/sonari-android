@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
@@ -117,30 +116,74 @@ constructor(
     mutex.withLock {
       if (!force && isFresh()) return@withLock
 
-      _loading.value = true
       attemptedAt = System.currentTimeMillis()
+      val previous = _mixes.value
+
+      // A refresh clears the row first, and the new mixes then stand in one by one as they are
+      // built. Holding the old mixes until the whole build was done is what made a tap on refresh
+      // look like it did nothing at all: nothing on screen moved for half a minute.
+      if (force) _mixes.value = emptyList()
+
+      _loading.value = true
       try {
-        // Bounded, so a source that never answers cannot leave the row building for good: what is
-        // there from the last build stays, and the next visit tries again.
+        // A refresh is asked for because the row was not what the user wanted: it says what the
+        // row already held, so those songs are not offered again and the mixes stand on the next
+        // artists down the ranking instead.
+        val skipKeys = mutableSetOf<String>()
+        val skipArtists = mutableSetOf<String>()
+        if (force) {
+          previous.forEach { mix ->
+            if (mix.suggestions.isEmpty()) {
+              skipKeys +=
+                runCatching { engine.savedKeys(mix.playlistId) }.getOrDefault(emptyList())
+            } else {
+              skipKeys += mix.suggestions.map { it.key }
+              // The artist a mix stands on is the one its first song is by.
+              val centre = mix.suggestions.firstOrNull()?.let { primaryArtistOf(it) }.orEmpty()
+              if (centre.isNotEmpty()) skipArtists += centre
+            }
+          }
+        }
+
+        val startedAt = System.currentTimeMillis()
         val built =
           try {
-            withTimeoutOrNull(BuildTimeoutMillis) { engine.buildMixes() }.orEmpty()
+            engine.buildMixes(
+              skipKeys = skipKeys,
+              skipArtists = skipArtists,
+              // The first card is on the row within seconds of the tap, not when the fourth mix
+              // is done: the rest follow it as they are built.
+              onMix = { soFar -> publish(soFar) },
+            )
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
             Timber.e(e, "Building the For you mixes failed")
             emptyList()
           }
+        Timber.d(
+          "For you: built in ${System.currentTimeMillis() - startedAt} ms, " +
+            built.map { "${it.playlistName}=${it.suggestions.size}" }
+        )
 
         if (built.isNotEmpty()) {
-          _mixes.value = built
-          builtAt = System.currentTimeMillis()
-          saveMixes(built)
+          publish(built)
+        } else if (_mixes.value.isEmpty()) {
+          // Nothing could be built at all: the row keeps what it had rather than going blank.
+          _mixes.value = previous
         }
       } finally {
         _loading.value = false
       }
     }
+  }
+
+  /** What has been built so far stands on the row at once, and is written down with its playlists. */
+  private suspend fun publish(mixes: List<TasteMix>) {
+    if (mixes.isEmpty()) return
+    _mixes.value = mixes
+    builtAt = System.currentTimeMillis()
+    saveMixes(mixes)
   }
 
   /**
@@ -227,8 +270,5 @@ constructor(
 
     /** A build that left nothing is tried again this soon, so a play made meanwhile is picked up. */
     const val EmptyRetryMillis = 60L * 1000
-
-    /** No build may leave the row waiting longer than this; a source that never answers is dropped. */
-    const val BuildTimeoutMillis = 45_000L
   }
 }

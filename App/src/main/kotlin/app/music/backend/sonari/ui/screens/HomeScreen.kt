@@ -1669,7 +1669,7 @@ fun HomeScreen(
                 item(key = "taste_mix_building_title") {
                   NavigationTitle(
                     title = "For you",
-                    label = if (tasteLoading) "built from what you play" else "not yet",
+                    label = if (tasteLoading) "building…" else "not yet",
                     modifier = Modifier.animateItem()
                   )
                 }
@@ -1690,7 +1690,7 @@ fun HomeScreen(
                 item(key = "taste_mix_title") {
                   NavigationTitle(
                     title = "For you",
-                    label = "from what you play",
+                    label = if (tasteLoading) "building…" else "from what you play",
                     modifier = Modifier.animateItem()
                   )
                 }
@@ -1724,6 +1724,14 @@ fun HomeScreen(
                       },
                       modifier = Modifier.animateItem()
                     )
+                  }
+                }
+
+                // The mixes already handed over stand as they land, and this card stays under
+                // them until the last one is done: the row is growing the whole time.
+                if (tasteLoading) {
+                  item(key = "taste_mix_building_more") {
+                    ForYouBuildingCard(modifier = Modifier.animateItem())
                   }
                 }
               }
