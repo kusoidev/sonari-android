@@ -1182,7 +1182,12 @@ class MainActivity : ComponentActivity() {
                 if (playerBottomSheetState.isExpanded) {
                   playerBottomSheetState.collapseSoft()
                 }
-                connection.player.shuffleModeEnabled = !connection.player.shuffleModeEnabled
+                val enabled = !connection.player.shuffleModeEnabled
+                connection.player.shuffleModeEnabled = enabled
+                ActionBanner.show(
+                  text = if (enabled) "Shuffled the queue" else "Shuffle off",
+                  iconRes = R.drawable.shuffle,
+                )
               }
             }
           }
@@ -1956,6 +1961,13 @@ class MainActivity : ComponentActivity() {
 
           // Mark home/library as composed for launch intro
           ReportLaunchHomeComposed()
+
+          // One short line about what the player just did, such as a queue being shuffled.
+          ActionBannerHost(
+            modifier =
+              Modifier.align(Alignment.BottomCenter)
+                .padding(bottom = MiniPlayerHeight + 16.dp)
+          )
 
           BottomSheetMenu(
             state = LocalMenuState.current,

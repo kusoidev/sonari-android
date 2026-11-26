@@ -34,6 +34,8 @@ data class TasteSeed(
   val downloaded: Boolean,
   val score: Float,
   val artworkUrl: String? = null,
+  /** Played within the last week, so the artist is still on the user's mind. */
+  val recent: Boolean = false,
 )
 
 /**
@@ -64,6 +66,12 @@ const val ARTIST_AFFINITY_BONUS = 3.0f
 
 /** Every source returns its results in relevance order, so the nth one is worth this much less. */
 const val RANK_DECAY = 0.35f
+
+/** What each further provider agreeing on the same track adds, so a consensus beats one opinion. */
+const val AGREEMENT_BONUS = 1.6f
+
+/** What it adds when the song is by an artist the user played this week. */
+const val FRESH_ARTIST_BONUS = 1.2f
 
 /** Below this a "song" is a jingle; above it, a mix or a podcast episode. */
 const val MIN_SUGGESTION_SECONDS = 45
@@ -149,6 +157,10 @@ internal fun artistAffinityOf(seeds: List<TasteSeed>): Map<String, Float> {
 internal fun primaryArtistOf(suggestion: TasteSuggestion): String =
   suggestion.song.artists.firstOrNull()?.name?.trim()?.lowercase().orEmpty()
 
+/** How many providers proposed each track, before the copies are merged into one. */
+internal fun sourceAgreementOf(raw: List<TasteSuggestion>): Map<String, Int> =
+  raw.groupBy { it.key }.mapValues { (_, copies) -> copies.mapTo(mutableSetOf()) { it.source }.size }
+
 /** True when the result really is by the artist another provider named. */
 internal fun artistMatches(song: SongItem, artist: String): Boolean {
   val wanted = artist.trim().lowercase()
@@ -175,9 +187,10 @@ internal fun isOffTaste(
 }
 
 /**
- * Merges what every source proposed: lifts the artists the user actually plays, drops what was
- * already played or is plainly not a song, keeps the best scored copy of each track, and caps both
- * how much one source may add and how often one artist may repeat.
+ * Merges what every source proposed: lifts the artists the user actually plays, trusts a track more
+ * when several providers named it, follows the artists played this week, drops what was already played
+ * or is plainly not a song, keeps the best scored copy of each track, and caps both how much one
+ * source may add and how often one artist may repeat.
  */
 internal fun assembleTasteMix(
   raw: List<TasteSuggestion>,
@@ -187,21 +200,27 @@ internal fun assembleTasteMix(
   excludedArtists: Set<String> = emptySet(),
   allowedMarkers: Set<String> = emptySet(),
   maxPerArtist: Int = 3,
+  freshArtists: Set<String> = emptySet(),
 ): List<TasteSuggestion> {
   val seen = mutableSetOf<String>()
   val usedPerSource = mutableMapOf<TasteSource, Int>()
   val usedPerArtist = mutableMapOf<String, Int>()
   val kept = mutableListOf<TasteSuggestion>()
 
+  // How many providers named each track: YouTube Music and Last.fm agreeing is the best sign there
+  // is, and it is counted before the copies are merged below.
+  val agreement = sourceAgreementOf(raw)
+
   val ranked =
     raw
       .map { suggestion ->
+        var score = suggestion.score
         val affinity = artistAffinity[primaryArtistOf(suggestion)] ?: 0f
-        if (affinity > 0f) {
-          suggestion.copy(score = suggestion.score + affinity * ARTIST_AFFINITY_BONUS)
-        } else {
-          suggestion
-        }
+        if (affinity > 0f) score += affinity * ARTIST_AFFINITY_BONUS
+        val agreeing = agreement[suggestion.key] ?: 1
+        if (agreeing > 1) score += (agreeing - 1) * AGREEMENT_BONUS
+        if (primaryArtistOf(suggestion) in freshArtists) score += FRESH_ARTIST_BONUS
+        if (score != suggestion.score) suggestion.copy(score = score) else suggestion
       }
       .sortedByDescending { it.score }
 

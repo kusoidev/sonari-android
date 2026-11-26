@@ -136,6 +136,7 @@ import app.music.backend.sonari.extensions.metadata
 import app.music.backend.sonari.extensions.move
 import app.music.backend.sonari.extensions.toggleRepeatMode
 import app.music.backend.sonari.models.MediaMetadata
+import app.music.backend.sonari.ui.component.ActionBanner
 import app.music.backend.sonari.ui.component.ActionPromptDialog
 import app.music.backend.sonari.ui.component.BottomSheet
 import app.music.backend.sonari.ui.component.BottomSheetState
@@ -404,7 +405,14 @@ fun Queue(
           val shuffleModeEnabledInside by playerConnection.shuffleModeEnabled.collectAsState()
           PlayerQueueButton(
             icon = R.drawable.shuffle,
-            onClick = { playerConnection.player.shuffleModeEnabled = !shuffleModeEnabledInside },
+            onClick = {
+              val enabled = !shuffleModeEnabledInside
+              playerConnection.player.shuffleModeEnabled = enabled
+              ActionBanner.show(
+                text = if (enabled) "Shuffled the queue" else "Shuffle off",
+                iconRes = R.drawable.shuffle,
+              )
+            },
             isActive = shuffleModeEnabledInside,
             enabled = !isListenTogetherGuest,
             shape = middleShape,
@@ -423,7 +431,23 @@ fun Queue(
                 Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
                 else -> R.drawable.repeat
               },
-            onClick = { playerConnection.player.toggleRepeatMode() },
+            onClick = {
+              playerConnection.player.toggleRepeatMode()
+              val mode = playerConnection.player.repeatMode
+              ActionBanner.show(
+                text =
+                  when (mode) {
+                    Player.REPEAT_MODE_ALL -> "Looping this queue"
+                    Player.REPEAT_MODE_ONE -> "Looping this song"
+                    else -> "Looping off"
+                  },
+                iconRes =
+                  when (mode) {
+                    Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
+                    else -> R.drawable.repeat
+                  },
+              )
+            },
             isActive = repeatMode != Player.REPEAT_MODE_OFF,
             enabled = !isListenTogetherGuest,
             shape = repeatShape,

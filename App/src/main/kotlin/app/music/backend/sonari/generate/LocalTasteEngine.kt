@@ -31,6 +31,9 @@ internal const val LIKED_BONUS = 5.0f
 internal const val RECENCY_BONUS = 1.5f
 internal const val TIME_OF_DAY_BONUS = 1.3f
 
+/** A play this recent still says something about what the user is into right now. */
+private const val RECENT_WINDOW_MILLIS = 7L * 86_400_000L
+
 private const val YOUTUBE_ID_LENGTH = 11
 
 /** The playlist the suggestions live in, built on its own and kept only when the user saves it. */
@@ -41,10 +44,10 @@ const val ForYouPlaylistName = "For you"
 const val ForYouMixCount = 4
 
 /** A mix with fewer songs than this is not worth a card, so another seed is tried instead. */
-const val MinMixSongs = 4
+const val MinMixSongs = 20
 
 /** How long a mix may grow to; its real size is picked at random inside that range each build. */
-const val MaxMixSongs = 50
+const val MaxMixSongs = 75
 
 /** "Recommend more like this" adds this many songs to the mix it was asked about. */
 const val MoreLikeThisCount = 8
@@ -129,7 +132,7 @@ internal fun scoreStats(
   timeOfDay: String,
 ): Float {
   val isLiked = stats.trackKey in likedKeys
-  val isRecent = System.currentTimeMillis() - stats.lastPlayedAtMillis < 7L * 86_400_000L
+  val isRecent = System.currentTimeMillis() - stats.lastPlayedAtMillis < RECENT_WINDOW_MILLIS
 
   val playMinutes = (stats.totalPlayTimeMs.coerceAtLeast(0L) / 60_000.0)
   val normalizedPlayTime = kotlin.math.ln(1.0 + playMinutes).toFloat()
@@ -246,6 +249,10 @@ open class LocalTasteEngine @Inject constructor(
       val allowedMarkers = seeds.flatMapTo(mutableSetOf()) { junkMarkersIn(it.title) }
       val knownKeys = loadKnownKeys()
 
+      // The artists played this week: their other songs are the next thing the user wants to hear.
+      val freshArtists =
+        seeds.filter { it.recent }.mapTo(mutableSetOf()) { it.artist.trim().lowercase() }
+
       val usable =
         seeds.filter { seed ->
           seed.key !in exclusions && artistNamesOf(seed.artist).none { it in excludedArtists }
@@ -268,6 +275,7 @@ open class LocalTasteEngine @Inject constructor(
             excludedArtists = excludedArtists,
             allowedMarkers = allowedMarkers,
             knownKeys = knownKeys,
+            freshArtists = freshArtists,
           )
         if (suggestions.size < MinMixSongs) continue
 
@@ -448,6 +456,7 @@ open class LocalTasteEngine @Inject constructor(
     excludedArtists: Set<String> = emptySet(),
     allowedMarkers: Set<String> = emptySet(),
     knownKeys: Set<String>? = null,
+    freshArtists: Set<String> = emptySet(),
   ): List<TasteSuggestion> {
     // Anything already played or kept (downloaded, liked, in the library) is not a suggestion.
     val known = knownKeys ?: loadKnownKeys()
@@ -461,6 +470,7 @@ open class LocalTasteEngine @Inject constructor(
       artistAffinity = artistAffinity,
       excludedArtists = excludedArtists,
       allowedMarkers = allowedMarkers,
+      freshArtists = freshArtists,
     )
   }
 
@@ -510,6 +520,7 @@ open class LocalTasteEngine @Inject constructor(
           downloaded = downloaded,
           score = scoreStats(stats, likedKeys, timeOfDay) + if (downloaded) DOWNLOADED_BONUS else 0f,
           artworkUrl = stats.artworkUrl,
+          recent = System.currentTimeMillis() - stats.lastPlayedAtMillis < RECENT_WINDOW_MILLIS,
         )
     }
 
