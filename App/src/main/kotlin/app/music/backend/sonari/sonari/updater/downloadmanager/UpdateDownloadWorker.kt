@@ -43,6 +43,21 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
         setForeground(foregroundInfo)
       } catch (e: Exception) {}
 
+      val downloadDir =
+        File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "sonari_updates")
+      if (!downloadDir.exists()) {
+        downloadDir.mkdirs()
+      }
+
+      val isZip = apkUrl.contains("nightly.link") || apkUrl.endsWith(".zip")
+      val apkFile = File(downloadDir, "sonari.apk")
+      // The transfer is written beside the APK and only takes its place once it is whole: a
+      // download cut short used to sit on disk as the APK itself, and the installer then called
+      // it invalid instead of downloading it again.
+      val partialFile =
+        if (isZip) File(downloadDir, "sonari_temp.zip") else File(downloadDir, "sonari.apk.part")
+      partialFile.delete()
+
       try {
         val url = URL(apkUrl)
         val connection = url.openConnection() as HttpURLConnection
@@ -64,17 +79,7 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
 
         val fileLength = connection.contentLength
         val inputStream = connection.inputStream
-
-        val downloadDir =
-          File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "sonari_updates")
-        if (!downloadDir.exists()) {
-          downloadDir.mkdirs()
-        }
-
-        val isZip = apkUrl.contains("nightly.link") || apkUrl.endsWith(".zip")
-        val downloadFile =
-          if (isZip) File(downloadDir, "sonari_temp.zip") else File(downloadDir, "sonari.apk")
-        val outputStream = FileOutputStream(downloadFile)
+        val outputStream = FileOutputStream(partialFile)
 
         val buffer = ByteArray(8192)
         var bytesRead: Int
@@ -87,9 +92,7 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
             outputStream.close()
             inputStream.close()
             connection.disconnect()
-            if (downloadFile.exists()) {
-              downloadFile.delete()
-            }
+            partialFile.delete()
             return@withContext Result.retry()
           }
 
@@ -124,42 +127,36 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
         inputStream.close()
         connection.disconnect()
 
-        val finalFile =
+        // A transfer the server closed early ends cleanly as far as the socket is concerned, so
+        // what the release says the file weighs is what decides whether all of it arrived.
+        if (fileLength > 0 && totalBytesRead != fileLength.toLong()) {
+          partialFile.delete()
+          DownloadNotificationManager.showDownloadFailed(
+            version,
+            context.getString(R.string.download_incomplete)
+          )
+          return@withContext Result.retry()
+        }
+
+        apkFile.delete()
+        val placed =
           if (isZip) {
-            val targetApkFile = File(downloadDir, "sonari.apk")
-            var extracted = false
-            try {
-              ZipInputStream(downloadFile.inputStream()).use { zis ->
-                var entry = zis.nextEntry
-                while (entry != null) {
-                  if (!entry.isDirectory && entry.name.endsWith(".apk")) {
-                    FileOutputStream(targetApkFile).use { fos -> zis.copyTo(fos) }
-                    extracted = true
-                    break
-                  }
-                  entry = zis.nextEntry
-                }
-              }
-            } catch (e: Exception) {
-              if (downloadFile.exists()) downloadFile.delete()
-              DownloadNotificationManager.showDownloadFailed(
-                version,
-                e.message ?: "Failed to extract zip file"
-              )
-              return@withContext Result.failure()
-            } finally {
-              if (downloadFile.exists()) {
-                downloadFile.delete()
-              }
-            }
-            if (!extracted) {
-              DownloadNotificationManager.showDownloadFailed(version, "Could not find APK in zip")
-              return@withContext Result.failure()
-            }
-            targetApkFile
+            val extracted = extractApk(partialFile, apkFile)
+            partialFile.delete()
+            extracted
           } else {
-            downloadFile
+            partialFile.renameTo(apkFile)
           }
+
+        // A file the installer cannot read at all is never handed to it.
+        if (!placed || !isInstallable(apkFile)) {
+          apkFile.delete()
+          DownloadNotificationManager.showDownloadFailed(
+            version,
+            context.getString(R.string.download_incomplete)
+          )
+          return@withContext Result.retry()
+        }
 
         if (version.startsWith("nightly-r")) {
           val runNumberString = version.removePrefix("nightly-r")
@@ -171,16 +168,18 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
           }
         }
 
-        DownloadNotificationManager.showDownloadComplete(version, finalFile.absolutePath)
+        DownloadNotificationManager.showDownloadComplete(version, apkFile.absolutePath)
 
-        Result.success(workDataOf("file_path" to finalFile.absolutePath))
+        Result.success(workDataOf("file_path" to apkFile.absolutePath))
       } catch (e: IOException) {
+        partialFile.delete()
         DownloadNotificationManager.showDownloadFailed(
           version,
           e.message ?: context.getString(R.string.download_failed)
         )
-        return@withContext Result.retry()
+        Result.retry()
       } catch (e: Exception) {
+        partialFile.delete()
         DownloadNotificationManager.showDownloadFailed(
           version,
           e.message ?: context.getString(R.string.download_failed)
@@ -188,4 +187,27 @@ class UpdateDownloadWorker(private val context: Context, workerParams: WorkerPar
         Result.failure()
       }
     }
+
+  /** Copies the APK out of a nightly zip, and says whether there was one to copy. */
+  private fun extractApk(zip: File, target: File): Boolean =
+    runCatching {
+        ZipInputStream(zip.inputStream()).use { zis ->
+          var entry = zis.nextEntry
+          while (entry != null) {
+            if (!entry.isDirectory && entry.name.endsWith(".apk")) {
+              FileOutputStream(target).use { fos -> zis.copyTo(fos) }
+              return true
+            }
+            entry = zis.nextEntry
+          }
+        }
+        false
+      }
+      .getOrDefault(false)
+
+  /** Whether the installer can parse this file at all. */
+  private fun isInstallable(file: File): Boolean =
+    file.length() > 0L &&
+      runCatching { context.packageManager.getPackageArchiveInfo(file.absolutePath, 0) != null }
+        .getOrDefault(false)
 }
