@@ -1,5 +1,6 @@
 package app.music.backend.sonari.sonari.updater
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -156,10 +157,17 @@ fun UpdateScreen(navController: NavHostController) {
           }
           WorkInfo.State.SUCCEEDED -> {
             isDownloading = false
-            isDownloadComplete = true
-            val filePath = workInfo.outputData.getString("file_path")
-            if (filePath != null) {
-              downloadedFile = File(filePath)
+            // Only a whole, newer APK becomes the one offered: a file an earlier download left
+            // behind is dropped here instead of being handed to the installer as an update.
+            val file = workInfo.outputData.getString("file_path")?.let { File(it) }
+            if (file != null && isInstallableApk(context, file) && isNewerApk(context, file)) {
+              isDownloadComplete = true
+              downloadedFile = file
+            } else {
+              file?.delete()
+              isDownloadComplete = false
+              downloadedFile = null
+              downloadProgress = 0f
             }
           }
           WorkInfo.State.FAILED -> {
@@ -316,6 +324,20 @@ fun UpdateScreen(navController: NavHostController) {
                         return@AnimatedActionButton
                       }
                       file.let { f ->
+                        // A file that is not whole, or not newer than what is installed, is not
+                        // sent to the installer: it is dropped and downloaded again instead.
+                        if (!isInstallableApk(context, f) || !isNewerApk(context, f)) {
+                          f.delete()
+                          isDownloadComplete = false
+                          downloadedFile = null
+                          downloadProgress = 0f
+                          scope.launch {
+                            snackbarHostState.showSnackbar(
+                              context.getString(R.string.download_incomplete)
+                            )
+                          }
+                          return@AnimatedActionButton
+                        }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                           if (!context.packageManager.canRequestPackageInstalls()) {
                             val intent =
@@ -336,6 +358,9 @@ fun UpdateScreen(navController: NavHostController) {
                             setDataAndType(uri, "application/vnd.android.package-archive")
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            // Some installers only keep the read grant the intent carries in its
+                            // clip data, and then cannot read the APK they were handed.
+                            clipData = ClipData.newRawUri("APK", uri)
                           }
                         ContextCompat.startActivity(context, installIntent, null)
                       }
@@ -920,6 +945,29 @@ fun WhatsNewDialog(
     }
   }
 }
+
+/**
+ * Whether the installer can parse this file at all. A download the connection cut short leaves a
+ * file that is no APK, and the installer only ever says it "appears to be invalid".
+ */
+private fun isInstallableApk(context: Context, file: File): Boolean =
+  file.length() > 0L &&
+    runCatching { context.packageManager.getPackageArchiveInfo(file.absolutePath, 0) != null }
+      .getOrDefault(false)
+
+/** The version code an APK carries, or null when it cannot be read. */
+private fun apkVersionCode(context: Context, file: File): Long? =
+  runCatching {
+      val info = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
+      if (info == null) null
+      else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode
+      else info.versionCode.toLong()
+    }
+    .getOrNull()
+
+/** Whether this APK is a newer build than the one on the phone, so the installer takes it. */
+private fun isNewerApk(context: Context, file: File): Boolean =
+  (apkVersionCode(context, file) ?: return false) > BuildConfig.VERSION_CODE.toLong()
 
 fun String.extractUrls(): List<Pair<IntRange, String>> {
   val urlPattern =

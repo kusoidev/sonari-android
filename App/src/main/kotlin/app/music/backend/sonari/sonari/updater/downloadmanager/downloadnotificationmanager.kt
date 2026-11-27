@@ -169,18 +169,20 @@ object DownloadNotificationManager {
 
   @RequiresApi(Build.VERSION_CODES.BAKLAVA)
   private fun showDownloadCompleteModern(version: String, filePath: String) {
+    val apkUri =
+      androidx.core.content.FileProvider.getUriForFile(
+        appContext,
+        "${appContext.packageName}.FileProvider",
+        java.io.File(filePath)
+      )
     val installIntent =
       Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(
-          androidx.core.content.FileProvider.getUriForFile(
-            appContext,
-            "${appContext.packageName}.FileProvider",
-            java.io.File(filePath)
-          ),
-          "application/vnd.android.package-archive"
-        )
+        setDataAndType(apkUri, "application/vnd.android.package-archive")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Some installers only keep the read grant the intent carries in its clip data, and then
+        // cannot read the APK they were handed.
+        clipData = android.content.ClipData.newRawUri("APK", apkUri)
       }
 
     val pendingIntent =
@@ -285,18 +287,20 @@ object DownloadNotificationManager {
   }
 
   private fun showDownloadCompleteLegacy(version: String, filePath: String) {
+    val apkUri =
+      androidx.core.content.FileProvider.getUriForFile(
+        appContext,
+        "${appContext.packageName}.FileProvider",
+        java.io.File(filePath)
+      )
     val installIntent =
       Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(
-          androidx.core.content.FileProvider.getUriForFile(
-            appContext,
-            "${appContext.packageName}.FileProvider",
-            java.io.File(filePath)
-          ),
-          "application/vnd.android.package-archive"
-        )
+        setDataAndType(apkUri, "application/vnd.android.package-archive")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Some installers only keep the read grant the intent carries in its clip data, and then
+        // cannot read the APK they were handed.
+        clipData = android.content.ClipData.newRawUri("APK", apkUri)
       }
 
     val pendingIntent =
